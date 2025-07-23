@@ -105,9 +105,9 @@
 
 #### Task 3.1: Dashboard Updates
 
-- [ ] Replace mock data in Dashboard component with `usePatients` hook
-- [ ] Implement real-time patient list sorting by risk score
-- [ ] Add loading and error states
+- [x] Replace mock data in Dashboard component with `usePatients` hook
+- [x] Implement real-time patient list sorting by risk score
+- [x] Add loading and error states
 - [ ] Implement patient search/filtering functionality
 
 #### Task 3.2: Patient Detail View Updates

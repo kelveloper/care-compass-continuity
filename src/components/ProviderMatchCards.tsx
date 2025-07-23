@@ -66,7 +66,7 @@ export const ProviderMatchCards = ({
       </CardHeader>
       <CardContent>
         {/* Loading State */}
-        {loading && (
+        {(isMatching || providersLoading) && (
           <div className="flex items-center justify-center py-8">
             <div className="flex items-center gap-2">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -76,7 +76,7 @@ export const ProviderMatchCards = ({
         )}
 
         {/* Error State */}
-        {error && !loading && (
+        {error && !(isMatching || providersLoading) && (
           <div className="flex flex-col items-center justify-center py-8 space-y-4">
             <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-6 w-6" />
@@ -85,11 +85,24 @@ export const ProviderMatchCards = ({
             <p className="text-sm text-muted-foreground text-center max-w-md">
               {error}
             </p>
+            <Button 
+              onClick={() => {
+                // Retry loading matches
+                setMatches([]);
+                findMatches(patient, patient.required_followup, 3)
+                  .then(providerMatches => setMatches(providerMatches))
+                  .catch(err => console.error('Failed to find provider matches:', err));
+              }}
+              variant="outline"
+            >
+              <AlertCircle className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
           </div>
         )}
 
         {/* Provider Matches */}
-        {!loading && !error && matches.length > 0 && (
+        {!(isMatching || providersLoading) && !error && matches.length > 0 && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {matches.map((match, index) => (
@@ -219,7 +232,7 @@ export const ProviderMatchCards = ({
         )}
 
         {/* No Matches State */}
-        {!loading && !error && matches.length === 0 && (
+        {!(isMatching || providersLoading) && !error && matches.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 space-y-4">
             <AlertCircle className="h-12 w-12 text-muted-foreground" />
             <div className="text-center">

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, MapPin, CreditCard, Calendar, Plus, Check, Star, Clock, Phone, AlertCircle, X } from "lucide-react";
+import { ArrowLeft, MapPin, CreditCard, Calendar, Plus, Check, Star, Clock, Phone, AlertCircle, X, RefreshCw } from "lucide-react";
 import { ProviderMatchCards } from "./ProviderMatchCards";
 import { useReferrals } from "@/hooks/use-referrals";
 import { useToast } from "@/hooks/use-toast";
@@ -34,48 +34,59 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
     scheduleReferral,
     completeReferral,
     cancelReferral,
-    getPatientReferrals
+    getPatientReferrals,
+    getReferralById,
+    refreshReferral
   } = useReferrals(patient.current_referral_id || undefined);
 
   // Fetch patient's active referral on component mount
   useEffect(() => {
     const fetchPatientReferrals = async () => {
       if (patient.id) {
-        const referrals = await getPatientReferrals(patient.id);
-        if (referrals.length > 0) {
-          // Find the most recent non-cancelled referral
-          const activeRef = referrals.find(ref => ref.status !== 'cancelled');
-          if (activeRef) {
-            setActiveReferral({
-              id: activeRef.id,
-              patientId: activeRef.patient_id,
-              providerId: activeRef.provider_id,
-              status: activeRef.status as any,
-              createdAt: activeRef.created_at,
-              updatedAt: activeRef.updated_at,
-              scheduledDate: activeRef.scheduled_date,
-              completedDate: activeRef.completed_date,
-              notes: activeRef.notes || undefined
-            });
-            
-            // If we have a provider ID, we should fetch the provider details
-            // For now, we'll just set a placeholder
-            setSelectedProvider({
-              id: activeRef.provider_id,
-              name: "Selected Provider", // This would be replaced with actual provider data
-              address: "Provider Address",
-              availability: activeRef.scheduled_date ? 
-                format(new Date(activeRef.scheduled_date), "MMM d, yyyy 'at' h:mm a") : 
-                "Pending",
-              distance: "Pending"
-            } as any);
+        try {
+          const referrals = await getPatientReferrals(patient.id);
+          if (referrals.length > 0) {
+            // Find the most recent non-cancelled referral
+            const activeRef = referrals.find(ref => ref.status !== 'cancelled');
+            if (activeRef) {
+              setActiveReferral({
+                id: activeRef.id,
+                patientId: activeRef.patient_id,
+                providerId: activeRef.provider_id,
+                status: activeRef.status as any,
+                createdAt: activeRef.created_at,
+                updatedAt: activeRef.updated_at,
+                scheduledDate: activeRef.scheduled_date,
+                completedDate: activeRef.completed_date,
+                notes: activeRef.notes || undefined
+              });
+              
+              // If we have a provider ID, we should fetch the provider details
+              // For now, we'll just set a placeholder
+              setSelectedProvider({
+                id: activeRef.provider_id,
+                name: "Selected Provider", // This would be replaced with actual provider data
+                address: "Provider Address",
+                availability: activeRef.scheduled_date ? 
+                  format(new Date(activeRef.scheduled_date), "MMM d, yyyy 'at' h:mm a") : 
+                  "Pending",
+                distance: "Pending"
+              } as any);
+            }
           }
+        } catch (err) {
+          console.error('Error fetching patient referrals:', err);
+          toast({
+            title: "Error Loading Referrals",
+            description: "Failed to load patient referrals. Please try again.",
+            variant: "destructive",
+          });
         }
       }
     };
     
     fetchPatientReferrals();
-  }, [patient.id, getPatientReferrals]);
+  }, [patient.id, getPatientReferrals, toast]);
 
   const handleAddFollowupCare = () => {
     setShowProviderMatch(true);
@@ -188,6 +199,157 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
     }
   };
 
+  // Loading skeleton for the entire view
+  const renderLoadingSkeleton = () => (
+    <div className="min-h-screen bg-background">
+      {/* Header Skeleton */}
+      <div className="border-b bg-card">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center gap-4">
+            <div className="h-9 w-36 bg-muted rounded animate-pulse"></div>
+            <div className="flex-1">
+              <div className="h-7 w-64 bg-muted rounded mb-2 animate-pulse"></div>
+              <div className="h-5 w-48 bg-muted rounded animate-pulse"></div>
+            </div>
+            <div className="h-8 w-32 bg-muted rounded animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Patient Summary Panel Skeleton */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-8">
+              <div className="rounded-lg border bg-card shadow-sm">
+                <div className="p-6">
+                  <div className="h-6 w-40 bg-muted rounded mb-6 animate-pulse"></div>
+                  <div className="space-y-6">
+                    {[...Array(8)].map((_, i) => (
+                      <div key={i}>
+                        <div className="h-4 w-32 bg-muted rounded mb-2 animate-pulse"></div>
+                        <div className="h-5 w-48 bg-muted rounded animate-pulse"></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content Area Skeleton */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Required Follow-up Care Skeleton */}
+            <div className="rounded-lg border bg-card shadow-sm">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="h-6 w-48 bg-muted rounded animate-pulse"></div>
+                  <div className="h-9 w-36 bg-muted rounded animate-pulse"></div>
+                </div>
+                <div className="h-20 bg-muted rounded animate-pulse"></div>
+              </div>
+            </div>
+
+            {/* Risk Factor Breakdown Skeleton */}
+            <div className="rounded-lg border bg-card shadow-sm">
+              <div className="p-6">
+                <div className="h-6 w-48 bg-muted rounded mb-6 animate-pulse"></div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="h-5 w-32 bg-muted rounded animate-pulse"></div>
+                    <div className="h-6 w-24 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  <div className="space-y-4 mt-4">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <div className="h-4 w-36 bg-muted rounded animate-pulse"></div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-2 bg-muted rounded animate-pulse"></div>
+                          <div className="h-4 w-8 bg-muted rounded animate-pulse"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Referral Status Tracker Skeleton */}
+            <div className="rounded-lg border bg-card shadow-sm">
+              <div className="p-6">
+                <div className="h-6 w-48 bg-muted rounded mb-6 animate-pulse"></div>
+                <div className="space-y-6">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <div className="w-3 h-3 rounded-full bg-muted animate-pulse"></div>
+                      <div className="flex-1">
+                        <div className="h-5 w-32 bg-muted rounded mb-2 animate-pulse"></div>
+                        <div className="h-4 w-48 bg-muted rounded animate-pulse"></div>
+                      </div>
+                      <div className="h-4 w-16 bg-muted rounded animate-pulse"></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Error state for the entire view
+  const renderErrorState = (errorMessage: string) => (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="border-b bg-card">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-foreground">Error Loading Patient</h1>
+              <p className="text-muted-foreground">There was a problem loading the patient data</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-6 py-8">
+        <div className="flex flex-col items-center justify-center py-12 space-y-6">
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertCircle className="h-8 w-8" />
+            <span className="text-xl font-medium">Failed to load patient data</span>
+          </div>
+          <p className="text-center text-muted-foreground max-w-md">
+            {errorMessage || "There was an error loading the patient data. Please try again or contact support if the problem persists."}
+          </p>
+          <div className="flex gap-4">
+            <Button onClick={onBack} variant="outline">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Return to Dashboard
+            </Button>
+            <Button onClick={() => window.location.reload()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Reload Page
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Check if we need to show loading or error states
+  if (isLoading) {
+    return renderLoadingSkeleton();
+  }
+
+  if (error) {
+    return renderErrorState(error.message);
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -284,15 +446,44 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
                     <Plus className="h-5 w-5 text-primary" />
                     Required Follow-up Care
                   </span>
-                  {!showProviderMatch && !selectedProvider && (
-                    <Button onClick={handleAddFollowupCare} className="gap-2">
+                  {!showProviderMatch && !selectedProvider && !isLoading && (
+                    <Button onClick={handleAddFollowupCare} className="gap-2" disabled={isLoading}>
                       <Plus className="h-4 w-4" />
                       Add Follow-up Care
                     </Button>
                   )}
+                  {isLoading && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Clock className="h-4 w-4 animate-pulse" />
+                      <span className="text-sm">Loading...</span>
+                    </div>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {/* Error State */}
+                {error && (
+                  <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                    <div className="flex items-center gap-2 text-destructive mb-1">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="font-medium">Error loading referral data</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{error.message}</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={() => {
+                        if (patient.current_referral_id) {
+                          getReferralById(patient.current_referral_id);
+                        }
+                      }}
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                )}
+                
                 <div className="flex items-center gap-3 p-4 bg-primary-light rounded-lg">
                   <div className="flex-1">
                     <p className="font-semibold text-foreground">{patient.required_followup}</p>
@@ -499,10 +690,31 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
                 <CardTitle className="flex items-center gap-2">
                   <Clock className="h-5 w-5 text-primary" />
                   Referral Status Timeline
+                  {isLoading && (
+                    <div className="ml-2 inline-flex items-center">
+                      <Clock className="h-3 w-3 animate-pulse text-muted-foreground" />
+                    </div>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                {isLoading && (
+                  <div className="space-y-4 animate-pulse">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="flex items-center gap-4">
+                        <div className="w-3 h-3 rounded-full bg-muted"></div>
+                        <div className="flex-1">
+                          <div className="h-4 w-32 bg-muted rounded mb-2"></div>
+                          <div className="h-3 w-48 bg-muted rounded"></div>
+                        </div>
+                        <div className="h-3 w-16 bg-muted rounded"></div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {!isLoading && !error && (
+                  <div className="space-y-4">
                   {/* Provider Selection Status */}
                   <div className="flex items-center gap-4">
                     <div className={`w-3 h-3 rounded-full ${selectedProvider ? 'bg-success' : 'bg-warning'}`}></div>
