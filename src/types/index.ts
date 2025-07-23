@@ -15,11 +15,13 @@ export interface Patient extends DBPatient {
 // Enhanced Provider interface with computed fields for frontend
 export interface Provider extends DBProvider {
   // Computed fields for matching
-  distance?: number;
+  distance?: string;
   matchScore?: number;
   inNetwork?: boolean;
   specialtyMatch?: boolean;
   availabilityScore?: number;
+  availability?: string; // Next available appointment time
+  address?: string;     // Formatted address string
 }
 
 // Provider matching result with explanation

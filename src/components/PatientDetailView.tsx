@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +17,14 @@ interface PatientDetailViewProps {
 }
 
 export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) => {
+  // State management
   const [showProviderMatch, setShowProviderMatch] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [isCreatingReferral, setIsCreatingReferral] = useState(false);
   const [activeReferral, setActiveReferral] = useState<ReferralStatus | null>(null);
   const [scheduledDate, setScheduledDate] = useState<string>("");
+  
+  // Hooks
   const { toast } = useToast();
   
   // Initialize referrals hook with patient's current referral ID if available
@@ -350,6 +354,68 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
     return renderErrorState(error.message);
   }
 
+  // Render error state helper
+  const renderError = (message: string) => (
+    <div className="min-h-screen bg-background">
+      <div className="border-b bg-card">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <h1 className="text-2xl font-bold text-foreground">Error</h1>
+          </div>
+        </div>
+      </div>
+      <div className="container mx-auto px-6 py-8">
+        <Card>
+          <CardContent className="py-6">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <AlertCircle className="h-8 w-8 text-destructive" />
+              <div>
+                <h2 className="text-lg font-semibold">Error Loading Patient Details</h2>
+                <p className="text-muted-foreground">{message}</p>
+              </div>
+              <Button onClick={onBack}>Return to Dashboard</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+
+  // Render loading state helper
+  const renderLoading = () => (
+    <div className="min-h-screen bg-background">
+      <div className="border-b bg-card">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <h1 className="text-2xl font-bold text-foreground">Loading...</h1>
+          </div>
+        </div>
+      </div>
+      <div className="container mx-auto px-6 py-8">
+        <Card>
+          <CardContent className="py-6">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+              <div>
+                <h2 className="text-lg font-semibold">Loading Patient Details</h2>
+                <p className="text-muted-foreground">Please wait while we fetch the patient information...</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+
+  // Main component render
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -558,24 +624,28 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
                       </div>
                     </div>
                     
-                    {activeReferral.status === 'pending' || activeReferral.status === 'sent' ? (
-                      <Button 
-                        size="sm" 
-                        className="mt-3 gap-2"
-                        onClick={handleScheduleReferral}
-                      >
-                        <Calendar className="h-4 w-4" />
-                        Schedule Appointment
-                      </Button>
+                    {activeReferral.status === 'needed' || activeReferral.status === 'sent' ? (
+                      <>
+                        <Button 
+                          size="sm" 
+                          className="mt-3 gap-2"
+                          onClick={handleScheduleReferral}
+                        >
+                          <Calendar className="h-4 w-4" />
+                          Schedule Appointment
+                        </Button>
+                      </>
                     ) : activeReferral.status === 'scheduled' ? (
-                      <Button 
-                        size="sm" 
-                        className="mt-3 gap-2"
-                        onClick={handleCompleteReferral}
-                      >
-                        <Check className="h-4 w-4" />
-                        Mark as Completed
-                      </Button>
+                      <>
+                        <Button 
+                          size="sm" 
+                          className="mt-3 gap-2"
+                          onClick={handleCompleteReferral}
+                        >
+                          <Check className="h-4 w-4" />
+                          Mark as Completed
+                        </Button>
+                      </>
                     ) : null}
                   </div>
                 )}
@@ -715,100 +785,101 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
                 
                 {!isLoading && !error && (
                   <div className="space-y-4">
-                  {/* Provider Selection Status */}
-                  <div className="flex items-center gap-4">
-                    <div className={`w-3 h-3 rounded-full ${selectedProvider ? 'bg-success' : 'bg-warning'}`}></div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">
-                        {selectedProvider ? 'Provider Selected' : 'Referral Needed'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedProvider ? `Selected ${selectedProvider.name}` : 'Waiting for provider selection'}
-                      </p>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {selectedProvider && !activeReferral ? 'Today' : 
-                       selectedProvider && activeReferral ? new Date(activeReferral.createdAt).toLocaleDateString() : 
-                       'Pending'}
-                    </span>
-                  </div>
-
-                  {/* Referral Sent Status */}
-                  <div className={`flex items-center gap-4 ${activeReferral && ['pending', 'sent', 'scheduled', 'completed'].includes(activeReferral.status) ? '' : 'opacity-50'}`}>
-                    <div className={`w-3 h-3 rounded-full ${activeReferral && ['pending', 'sent', 'scheduled', 'completed'].includes(activeReferral.status) ? 'bg-success' : 'bg-muted'}`}></div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Referral Sent</p>
-                      <p className="text-sm text-muted-foreground">
-                        {activeReferral && ['pending', 'sent', 'scheduled', 'completed'].includes(activeReferral.status) 
-                          ? `Referral sent to ${selectedProvider?.name}`
-                          : 'Digital referral transmitted to provider'}
-                      </p>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {activeReferral && ['pending', 'sent', 'scheduled', 'completed'].includes(activeReferral.status)
-                        ? new Date(activeReferral.createdAt).toLocaleDateString()
-                        : 'Pending'}
-                    </span>
-                  </div>
-
-                  {/* Appointment Scheduled Status */}
-                  <div className={`flex items-center gap-4 ${activeReferral && ['scheduled', 'completed'].includes(activeReferral.status) ? '' : 'opacity-50'}`}>
-                    <div className={`w-3 h-3 rounded-full ${activeReferral && ['scheduled', 'completed'].includes(activeReferral.status) ? 'bg-success' : 'bg-muted'}`}></div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Appointment Scheduled</p>
-                      <p className="text-sm text-muted-foreground">
-                        {activeReferral && activeReferral.scheduledDate 
-                          ? `Scheduled for ${new Date(activeReferral.scheduledDate).toLocaleDateString()}`
-                          : 'Provider confirms appointment time'}
-                      </p>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {activeReferral && ['scheduled', 'completed'].includes(activeReferral.status)
-                        ? activeReferral.scheduledDate 
-                          ? new Date(activeReferral.scheduledDate).toLocaleDateString()
-                          : new Date(activeReferral.updatedAt).toLocaleDateString()
-                        : 'Pending'}
-                    </span>
-                  </div>
-
-                  {/* Care Completed Status */}
-                  <div className={`flex items-center gap-4 ${activeReferral && activeReferral.status === 'completed' ? '' : 'opacity-50'}`}>
-                    <div className={`w-3 h-3 rounded-full ${activeReferral && activeReferral.status === 'completed' ? 'bg-success' : 'bg-muted'}`}></div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Care Completed</p>
-                      <p className="text-sm text-muted-foreground">
-                        {activeReferral && activeReferral.status === 'completed'
-                          ? `Care completed with ${selectedProvider?.name}`
-                          : 'Patient attends appointment'}
-                      </p>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {activeReferral && activeReferral.status === 'completed'
-                        ? activeReferral.completedDate 
-                          ? new Date(activeReferral.completedDate).toLocaleDateString()
-                          : new Date(activeReferral.updatedAt).toLocaleDateString()
-                        : 'Pending'}
-                    </span>
-                  </div>
-
-                  {/* Referral History */}
-                  {history.length > 0 && (
-                    <div className="mt-6 pt-4 border-t border-border">
-                      <h4 className="text-sm font-semibold mb-3">Referral History</h4>
-                      <div className="space-y-3">
-                        {history.map((entry) => (
-                          <div key={entry.id} className="text-sm">
-                            <div className="flex justify-between">
-                              <p className="font-medium">{entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}</p>
-                              <span className="text-muted-foreground">{new Date(entry.created_at).toLocaleDateString()}</span>
-                            </div>
-                            {entry.notes && <p className="text-muted-foreground mt-1">{entry.notes}</p>}
-                          </div>
-                        ))}
+                    {/* Provider Selection Status */}
+                    <div className="flex items-center gap-4">
+                      <div className={`w-3 h-3 rounded-full ${selectedProvider ? 'bg-success' : 'bg-warning'}`}></div>
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">
+                          {selectedProvider ? 'Provider Selected' : 'Referral Needed'}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedProvider ? `Selected ${selectedProvider.name}` : 'Waiting for provider selection'}
+                        </p>
                       </div>
+                      <span className="text-sm text-muted-foreground">
+                        {selectedProvider && !activeReferral ? 'Today' : 
+                          selectedProvider && activeReferral ? new Date(activeReferral.createdAt).toLocaleDateString() : 
+                          'Pending'}
+                      </span>
                     </div>
-                  )}
-                </div>
+
+                    {/* Referral Sent Status */}
+                    <div className={`flex items-center gap-4 ${activeReferral && ['pending', 'sent', 'scheduled', 'completed'].includes(activeReferral.status) ? '' : 'opacity-50'}`}>
+                      <div className={`w-3 h-3 rounded-full ${activeReferral && ['pending', 'sent', 'scheduled', 'completed'].includes(activeReferral.status) ? 'bg-success' : 'bg-muted'}`}></div>
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">Referral Sent</p>
+                        <p className="text-sm text-muted-foreground">
+                          {activeReferral && ['pending', 'sent', 'scheduled', 'completed'].includes(activeReferral.status) 
+                            ? `Referral sent to ${selectedProvider?.name}`
+                            : 'Digital referral transmitted to provider'}
+                        </p>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {activeReferral && ['pending', 'sent', 'scheduled', 'completed'].includes(activeReferral.status)
+                          ? new Date(activeReferral.createdAt).toLocaleDateString()
+                          : 'Pending'}
+                      </span>
+                    </div>
+
+                    {/* Appointment Scheduled Status */}
+                    <div className={`flex items-center gap-4 ${activeReferral && ['scheduled', 'completed'].includes(activeReferral.status) ? '' : 'opacity-50'}`}>
+                      <div className={`w-3 h-3 rounded-full ${activeReferral && ['scheduled', 'completed'].includes(activeReferral.status) ? 'bg-success' : 'bg-muted'}`}></div>
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">Appointment Scheduled</p>
+                        <p className="text-sm text-muted-foreground">
+                          {activeReferral && activeReferral.scheduledDate 
+                            ? `Scheduled for ${new Date(activeReferral.scheduledDate).toLocaleDateString()}`
+                            : 'Provider confirms appointment time'}
+                        </p>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {activeReferral && ['scheduled', 'completed'].includes(activeReferral.status)
+                          ? activeReferral.scheduledDate 
+                            ? new Date(activeReferral.scheduledDate).toLocaleDateString()
+                            : new Date(activeReferral.updatedAt).toLocaleDateString()
+                          : 'Pending'}
+                      </span>
+                    </div>
+
+                    {/* Care Completed Status */}
+                    <div className={`flex items-center gap-4 ${activeReferral && activeReferral.status === 'completed' ? '' : 'opacity-50'}`}>
+                      <div className={`w-3 h-3 rounded-full ${activeReferral && activeReferral.status === 'completed' ? 'bg-success' : 'bg-muted'}`}></div>
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">Care Completed</p>
+                        <p className="text-sm text-muted-foreground">
+                          {activeReferral && activeReferral.status === 'completed'
+                            ? `Care completed with ${selectedProvider?.name}`
+                            : 'Patient attends appointment'}
+                        </p>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {activeReferral && activeReferral.status === 'completed'
+                          ? activeReferral.completedDate 
+                            ? new Date(activeReferral.completedDate).toLocaleDateString()
+                            : new Date(activeReferral.updatedAt).toLocaleDateString()
+                          : 'Pending'}
+                      </span>
+                    </div>
+
+                    {/* Referral History */}
+                    {history.length > 0 && (
+                      <div className="mt-6 pt-4 border-t border-border">
+                        <h4 className="text-sm font-semibold mb-3">Referral History</h4>
+                        <div className="space-y-3">
+                          {history.map((entry) => (
+                            <div key={entry.id} className="text-sm">
+                              <div className="flex justify-between">
+                                <p className="font-medium">{entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}</p>
+                                <span className="text-muted-foreground">{new Date(entry.created_at).toLocaleDateString()}</span>
+                              </div>
+                              {entry.notes && <p className="text-muted-foreground mt-1">{entry.notes}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -816,4 +887,4 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
       </div>
     </div>
   );
-};
+}
