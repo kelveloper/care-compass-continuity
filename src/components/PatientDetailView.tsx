@@ -5,21 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, MapPin, CreditCard, Calendar, Plus, Check, Star, Clock, Phone } from "lucide-react";
 import { ProviderMatchCards } from "./ProviderMatchCards";
 
-interface Patient {
-  id: string;
-  name: string;
-  diagnosis: string;
-  dischargeDate: string;
-  requiredFollowup: string;
-  leakageRisk: {
-    score: number;
-    level: "low" | "medium" | "high";
-  };
-  referralStatus: "needed" | "sent" | "scheduled" | "completed";
-  insurance: string;
-  address: string;
-  dob: string;
-}
+import { Patient } from "@/types";
 
 interface PatientDetailViewProps {
   patient: Patient;
@@ -91,7 +77,12 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
                   
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Date of Birth</p>
-                    <p className="text-foreground">{new Date(patient.dob).toLocaleDateString()}</p>
+                    <p className="text-foreground">{new Date(patient.date_of_birth).toLocaleDateString()}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Age</p>
+                    <p className="text-foreground">{patient.age} years</p>
                   </div>
 
                   <div>
@@ -101,7 +92,12 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
 
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Discharge Date</p>
-                    <p className="text-foreground">{new Date(patient.dischargeDate).toLocaleDateString()}</p>
+                    <p className="text-foreground">{new Date(patient.discharge_date).toLocaleDateString()}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Days Since Discharge</p>
+                    <p className="text-foreground">{patient.daysSinceDischarge} days</p>
                   </div>
 
                   <div className="flex items-start gap-2">
@@ -145,7 +141,7 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
               <CardContent>
                 <div className="flex items-center gap-3 p-4 bg-primary-light rounded-lg">
                   <div className="flex-1">
-                    <p className="font-semibold text-foreground">{patient.requiredFollowup}</p>
+                    <p className="font-semibold text-foreground">{patient.required_followup}</p>
                     <p className="text-sm text-muted-foreground">Post-surgical rehabilitation required</p>
                   </div>
                   <Badge variant="outline" className="bg-warning-light text-warning border-warning">
@@ -187,6 +183,99 @@ export const PatientDetailView = ({ patient, onBack }: PatientDetailViewProps) =
                 onCancel={() => setShowProviderMatch(false)}
               />
             )}
+
+            {/* Risk Factor Breakdown */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Star className="h-5 w-5 text-primary" />
+                  Leakage Risk Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Overall Risk Score</span>
+                    <Badge className={`${getRiskBadgeClass(patient.leakageRisk.level)}`}>
+                      {patient.leakageRisk.score}/100 - {patient.leakageRisk.level.toUpperCase()}
+                    </Badge>
+                  </div>
+                  
+                  {patient.leakageRisk.factors && (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-semibold text-foreground">Risk Factor Breakdown:</h4>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Age Factor</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-primary h-2 rounded-full" 
+                                style={{ width: `${patient.leakageRisk.factors.age}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-sm font-medium w-8">{patient.leakageRisk.factors.age}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Diagnosis Complexity</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-primary h-2 rounded-full" 
+                                style={{ width: `${patient.leakageRisk.factors.diagnosisComplexity}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-sm font-medium w-8">{patient.leakageRisk.factors.diagnosisComplexity}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Time Since Discharge</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-primary h-2 rounded-full" 
+                                style={{ width: `${patient.leakageRisk.factors.timeSinceDischarge}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-sm font-medium w-8">{patient.leakageRisk.factors.timeSinceDischarge}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Insurance Type</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-primary h-2 rounded-full" 
+                                style={{ width: `${patient.leakageRisk.factors.insuranceType}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-sm font-medium w-8">{patient.leakageRisk.factors.insuranceType}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Geographic Factors</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-primary h-2 rounded-full" 
+                                style={{ width: `${patient.leakageRisk.factors.geographicFactors}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-sm font-medium w-8">{patient.leakageRisk.factors.geographicFactors}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Referral Status Tracker */}
             <Card>

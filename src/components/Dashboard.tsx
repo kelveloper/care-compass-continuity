@@ -2,75 +2,10 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { UserCircle, Clock, AlertCircle, CheckCircle2 } from "lucide-react";
+import { UserCircle, Clock, AlertCircle, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import { PatientDetailView } from "./PatientDetailView";
-
-interface Patient {
-  id: string;
-  name: string;
-  diagnosis: string;
-  dischargeDate: string;
-  requiredFollowup: string;
-  leakageRisk: {
-    score: number;
-    level: "low" | "medium" | "high";
-  };
-  referralStatus: "needed" | "sent" | "scheduled" | "completed";
-  insurance: string;
-  address: string;
-  dob: string;
-}
-
-const mockPatients: Patient[] = [
-  {
-    id: "1",
-    name: "Jane Doe",
-    diagnosis: "Total Knee Replacement",
-    dischargeDate: "2024-01-15",
-    requiredFollowup: "Physical Therapy",
-    leakageRisk: { score: 92, level: "high" },
-    referralStatus: "needed",
-    insurance: "Blue Cross Blue Shield",
-    address: "123 Main St, Boston, MA 02101",
-    dob: "1965-03-22"
-  },
-  {
-    id: "2",
-    name: "Robert Smith",
-    diagnosis: "Cardiac Catheterization",
-    dischargeDate: "2024-01-14",
-    requiredFollowup: "Cardiology",
-    leakageRisk: { score: 78, level: "medium" },
-    referralStatus: "sent",
-    insurance: "Medicare",
-    address: "456 Oak Ave, Cambridge, MA 02139",
-    dob: "1958-07-11"
-  },
-  {
-    id: "3",
-    name: "Maria Garcia",
-    diagnosis: "Appendectomy",
-    dischargeDate: "2024-01-13",
-    requiredFollowup: "General Surgery",
-    leakageRisk: { score: 25, level: "low" },
-    referralStatus: "scheduled",
-    insurance: "Aetna",
-    address: "789 Pine St, Somerville, MA 02144",
-    dob: "1982-11-30"
-  },
-  {
-    id: "4",
-    name: "William Johnson",
-    diagnosis: "Hip Fracture Repair",
-    dischargeDate: "2024-01-12",
-    requiredFollowup: "Orthopedics + PT",
-    leakageRisk: { score: 87, level: "high" },
-    referralStatus: "needed",
-    insurance: "United Healthcare",
-    address: "321 Elm St, Brookline, MA 02446",
-    dob: "1945-09-05"
-  }
-];
+import { usePatients } from "@/hooks/use-patients";
+import { Patient } from "@/types";
 
 const getRiskBadgeVariant = (level: string) => {
   switch (level) {
@@ -103,6 +38,7 @@ const getStatusText = (status: string) => {
 
 export const Dashboard = () => {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const { data: patients, isLoading, error, refetch, isFetching } = usePatients();
 
   if (selectedPatient) {
     return (
@@ -113,8 +49,8 @@ export const Dashboard = () => {
     );
   }
 
-  // Sort patients by risk score (highest first)
-  const sortedPatients = [...mockPatients].sort((a, b) => b.leakageRisk.score - a.leakageRisk.score);
+  // Patients are already sorted by leakage risk score in the hook
+  const sortedPatients = patients || [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -150,11 +86,71 @@ export const Dashboard = () => {
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-primary" />
               Active Discharge Plans ({sortedPatients.length})
+              {isFetching && (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+              {error && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => refetch()}
+                  className="ml-auto"
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Retry
+                </Button>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {sortedPatients.map((patient) => (
+            {/* Loading State */}
+            {isLoading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <span className="text-muted-foreground">Loading patients...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Error State */}
+            {error && !isLoading && (
+              <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                <div className="flex items-center gap-2 text-destructive">
+                  <AlertCircle className="h-6 w-6" />
+                  <span className="font-medium">Failed to load patients</span>
+                </div>
+                <p className="text-sm text-muted-foreground text-center max-w-md">
+                  {error.message || "There was an error loading patient data. Please check your connection and try again."}
+                </p>
+                <Button onClick={() => refetch()} variant="outline">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Try Again
+                </Button>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && !error && sortedPatients.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                <UserCircle className="h-12 w-12 text-muted-foreground" />
+                <div className="text-center">
+                  <h3 className="font-medium text-foreground">No patients found</h3>
+                  <p className="text-sm text-muted-foreground">
+                    There are currently no patients requiring follow-up care.
+                  </p>
+                </div>
+                <Button onClick={() => refetch()} variant="outline" size="sm">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+            )}
+
+            {/* Patient List */}
+            {!isLoading && !error && sortedPatients.length > 0 && (
+              <div className="space-y-4">
+                {sortedPatients.map((patient) => (
                 <div
                   key={patient.id}
                   className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-colors cursor-pointer"
@@ -164,14 +160,14 @@ export const Dashboard = () => {
                     <div className="flex-1">
                       <h3 className="font-semibold text-foreground">{patient.name}</h3>
                       <p className="text-sm text-muted-foreground">{patient.diagnosis}</p>
-                      <p className="text-xs text-muted-foreground">Discharged: {new Date(patient.dischargeDate).toLocaleDateString()}</p>
+                      <p className="text-xs text-muted-foreground">Discharged: {new Date(patient.discharge_date).toLocaleDateString()}</p>
                     </div>
                     
                     <div className="flex-1">
-                      <p className="font-medium text-foreground">{patient.requiredFollowup}</p>
+                      <p className="font-medium text-foreground">{patient.required_followup}</p>
                       <div className="flex items-center gap-2 mt-1">
-                        {getStatusIcon(patient.referralStatus)}
-                        <span className="text-sm text-muted-foreground">{getStatusText(patient.referralStatus)}</span>
+                        {getStatusIcon(patient.referral_status)}
+                        <span className="text-sm text-muted-foreground">{getStatusText(patient.referral_status)}</span>
                       </div>
                     </div>
                     
@@ -199,7 +195,8 @@ export const Dashboard = () => {
                   </Button>
                 </div>
               ))}
-            </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

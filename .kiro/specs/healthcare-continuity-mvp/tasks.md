@@ -44,12 +44,12 @@
 
 #### Task 1.3: Database Types Generation
 
-- [ ] Update Supabase types using CLI: `supabase gen types typescript --local > src/integrations/supabase/types.ts`
+- [x] Update Supabase types using CLI: `supabase gen types typescript --local > src/integrations/supabase/types.ts`
 
   - Generate TypeScript types from current database schema
   - _Requirements: 6.1, 6.5_
 
-- [ ] Create TypeScript interfaces for Patient and Provider entities
+- [x] Create TypeScript interfaces for Patient and Provider entities
   - Define frontend interfaces that match database schema
   - Include computed fields like leakage risk breakdown
   - _Requirements: 1.1, 2.1, 3.1_
@@ -60,19 +60,19 @@
 
 #### Task 2.1: Patient Data Hooks
 
-- [ ] Create `usePatients` hook for fetching all patients
+- [x] Create `usePatients` hook for fetching all patients
 
   - Implement sorting by leakage risk score
   - Add error handling and loading states
   - _Requirements: 1.1, 1.3, 5.1, 5.2_
 
-- [ ] Create `usePatient` hook for fetching single patient by ID
+- [x] Create `usePatient` hook for fetching single patient by ID
 
   - Include comprehensive patient information display
   - Handle missing data gracefully
   - _Requirements: 2.1, 2.2, 2.4, 5.4_
 
-- [ ] Implement leakage risk calculation logic
+- [x] Implement leakage risk calculation logic
   - Create risk scoring algorithm based on multiple factors
   - Calculate risk breakdown for patient detail view
   - _Requirements: 1.2, 2.3_
