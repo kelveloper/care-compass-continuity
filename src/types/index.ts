@@ -149,8 +149,39 @@ export interface UsePatientsReturn {
 }
 
 export interface UseProviderMatchReturn {
+  /** Current provider matches for the last search */
   matches: ProviderMatch[];
-  loading: boolean;
+  /** True when actively finding matches */
+  isMatching: boolean;
+  /** Error message from matching process or provider loading */
   error: string | null;
-  findMatches: (patient: Patient) => void;
+  
+  /** All available providers */
+  providers: Provider[];
+  /** True when loading providers */
+  providersLoading: boolean;
+  /** Error message from provider loading */
+  providersError: string | null;
+  
+  /** Find matching providers for a patient */
+  findMatches: (patient: Patient, serviceType?: string, limit?: number) => Promise<ProviderMatch[]>;
+  /** Find providers by specific criteria */
+  findProvidersByCriteria: (criteria: {
+    specialty?: string;
+    insurance?: string;
+    maxDistance?: number;
+    patientLocation?: { lat: number; lng: number };
+    minRating?: number;
+  }) => Promise<Provider[]>;
+  /** Get top providers for a service type */
+  getTopProviders: (serviceType: string, limit?: number) => Provider[];
+  /** Clear current matches */
+  clearMatches: () => void;
+  /** Refresh provider data */
+  refreshProviders: () => Promise<any>;
+  
+  /** True if providers are available */
+  hasProviders: boolean;
+  /** True if hook is ready to perform matching */
+  isReady: boolean;
 }
