@@ -40,6 +40,8 @@ const getStatusText = (status: string) => {
 };
 
 export const Dashboard = () => {
+  console.log('Dashboard: Component rendered');
+  
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [riskFilter, setRiskFilter] = useState<string>("all");
@@ -91,6 +93,15 @@ export const Dashboard = () => {
     failureCount
   } = usePatients(debouncedFilters, realtimeActive);
   
+  console.log('Dashboard: Patient data state:', {
+    patients: patients?.length || 0,
+    isLoading,
+    error: error?.message,
+    isFetching,
+    isError,
+    failureCount
+  });
+  
   // Detect changes in patient data to highlight recently updated patients
   useEffect(() => {
     if (!patients || !prevPatientsRef.current) {
@@ -112,10 +123,10 @@ export const Dashboard = () => {
     if (updatedPatientIds.size > 0) {
       setRecentlyUpdated(updatedPatientIds);
       
-      // Clear the highlight after 3 seconds
+      // Clear the highlight after 2 seconds (reduced from 3 seconds)
       const timer = setTimeout(() => {
         setRecentlyUpdated(new Set());
-      }, 3000);
+      }, 2000);
       
       return () => clearTimeout(timer);
     }
@@ -130,10 +141,14 @@ export const Dashboard = () => {
   }, [patients]);
 
   if (selectedPatient) {
+    console.log('Dashboard: Navigating to patient detail for:', selectedPatient.id, selectedPatient.name);
     return (
       <PatientDetailContainer 
         patientId={selectedPatient.id} 
-        onBack={() => setSelectedPatient(null)}
+        onBack={() => {
+          console.log('Dashboard: Returning from patient detail');
+          setSelectedPatient(null);
+        }}
       />
     );
   }
@@ -449,8 +464,8 @@ export const Dashboard = () => {
                 {sortedPatients.map((patient) => (
                 <div
                   key={patient.id}
-                  className={`flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-colors cursor-pointer ${
-                    recentlyUpdated.has(patient.id) ? 'bg-primary/10 border-primary/30 animate-pulse' : ''
+                  className={`flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-all duration-300 cursor-pointer ${
+                    recentlyUpdated.has(patient.id) ? 'bg-primary/5 border-primary/20 shadow-sm' : ''
                   }`}
                   onClick={() => setSelectedPatient(patient)}
                 >
@@ -483,11 +498,11 @@ export const Dashboard = () => {
                       <div className="flex items-center gap-2">
                         <Badge 
                           variant={getRiskBadgeVariant(patient.leakageRisk.level)}
-                          className={`
+                          className={`transition-all duration-300
                             ${patient.leakageRisk.level === 'high' ? 'bg-risk-high-bg text-risk-high border-risk-high' : ''}
                             ${patient.leakageRisk.level === 'medium' ? 'bg-risk-medium-bg text-risk-medium border-risk-medium' : ''}
                             ${patient.leakageRisk.level === 'low' ? 'bg-risk-low-bg text-risk-low border-risk-low' : ''}
-                            ${recentlyUpdated.has(patient.id) ? 'border-primary' : ''}
+                            ${recentlyUpdated.has(patient.id) ? 'border-primary/50 shadow-sm' : ''}
                           `}
                         >
                           {patient.leakageRisk.score}% Risk
@@ -502,7 +517,16 @@ export const Dashboard = () => {
                     </div>
                   </div>
                   
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={(e) => {
+                      console.log('Dashboard: View Plan button clicked for patient:', patient.id, patient.name);
+                      e.stopPropagation(); // Prevent event bubbling to parent card
+                      console.log('Dashboard: Setting selected patient:', patient);
+                      setSelectedPatient(patient);
+                    }}
+                  >
                     View Plan
                   </Button>
                 </div>

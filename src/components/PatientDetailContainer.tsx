@@ -15,7 +15,15 @@ interface PatientDetailContainerProps {
  * Handles loading states, error states, and missing data gracefully
  */
 export const PatientDetailContainer = ({ patientId, onBack }: PatientDetailContainerProps) => {
+  console.log('PatientDetailContainer: Rendered with patientId:', patientId);
+  
   const { data: patient, isLoading, error, refetch } = usePatient(patientId);
+  
+  console.log('PatientDetailContainer: Patient data state:', {
+    patient: patient ? { id: patient.id, name: patient.name } : null,
+    isLoading,
+    error: error?.message
+  });
   
   // Check if patient was not found based on error message
   const isNotFound = error?.message.includes('not found') ?? false;

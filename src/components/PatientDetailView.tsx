@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -160,7 +160,7 @@ export const PatientDetailView = ({
     };
 
     fetchPatientReferrals();
-  }, [patient.id, getPatientReferrals, getReferralHistory, toast]);
+  }, [patient.id]); // Only depend on patient.id to prevent infinite loops
 
   const handleAddFollowupCare = () => setShowProviderMatch(true);
 
