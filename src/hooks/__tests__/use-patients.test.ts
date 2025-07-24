@@ -159,4 +159,203 @@ describe('usePatients', () => {
     expect(result.current.data).toEqual([]);
     expect(result.current.error).toBeNull();
   });
+
+  it('should apply search filter correctly', async () => {
+    const mockPatients = [
+      {
+        id: '1',
+        name: 'John Doe',
+        diagnosis: 'Hip Replacement',
+        required_followup: 'Physical Therapy',
+        leakage_risk_score: 85,
+        leakage_risk_level: 'high' as const,
+      },
+    ];
+
+    const mockSelect = jest.fn().mockReturnThis();
+    const mockOr = jest.fn().mockReturnThis();
+    const mockOrder = jest.fn().mockResolvedValue({
+      data: mockPatients,
+      error: null,
+    });
+
+    mockSupabase.from.mockReturnValue({
+      select: mockSelect,
+      or: mockOr,
+      order: mockOrder,
+    } as any);
+
+    mockSelect.mockReturnValue({
+      or: mockOr,
+      order: mockOrder,
+    });
+
+    mockOr.mockReturnValue({
+      order: mockOrder,
+    });
+
+    const filters = { search: 'John' };
+    const { result } = renderHook(() => usePatients(filters), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(mockOr).toHaveBeenCalledWith('name.ilike.%John%,diagnosis.ilike.%John%,required_followup.ilike.%John%');
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it('should apply risk level filter correctly', async () => {
+    const mockPatients = [
+      {
+        id: '1',
+        name: 'John Doe',
+        leakage_risk_score: 85,
+        leakage_risk_level: 'high' as const,
+      },
+    ];
+
+    const mockSelect = jest.fn().mockReturnThis();
+    const mockEq = jest.fn().mockReturnThis();
+    const mockOrder = jest.fn().mockResolvedValue({
+      data: mockPatients,
+      error: null,
+    });
+
+    mockSupabase.from.mockReturnValue({
+      select: mockSelect,
+      eq: mockEq,
+      order: mockOrder,
+    } as any);
+
+    mockSelect.mockReturnValue({
+      eq: mockEq,
+      order: mockOrder,
+    });
+
+    mockEq.mockReturnValue({
+      order: mockOrder,
+    });
+
+    const filters = { riskLevel: 'high' as const };
+    const { result } = renderHook(() => usePatients(filters), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(mockEq).toHaveBeenCalledWith('leakage_risk_level', 'high');
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it('should apply referral status filter correctly', async () => {
+    const mockPatients = [
+      {
+        id: '1',
+        name: 'John Doe',
+        referral_status: 'needed' as const,
+        leakage_risk_score: 85,
+        leakage_risk_level: 'high' as const,
+      },
+    ];
+
+    const mockSelect = jest.fn().mockReturnThis();
+    const mockEq = jest.fn().mockReturnThis();
+    const mockOrder = jest.fn().mockResolvedValue({
+      data: mockPatients,
+      error: null,
+    });
+
+    mockSupabase.from.mockReturnValue({
+      select: mockSelect,
+      eq: mockEq,
+      order: mockOrder,
+    } as any);
+
+    mockSelect.mockReturnValue({
+      eq: mockEq,
+      order: mockOrder,
+    });
+
+    mockEq.mockReturnValue({
+      order: mockOrder,
+    });
+
+    const filters = { referralStatus: 'needed' as const };
+    const { result } = renderHook(() => usePatients(filters), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(mockEq).toHaveBeenCalledWith('referral_status', 'needed');
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it('should apply multiple filters correctly', async () => {
+    const mockPatients = [
+      {
+        id: '1',
+        name: 'John Doe',
+        diagnosis: 'Hip Replacement',
+        leakage_risk_level: 'high' as const,
+        referral_status: 'needed' as const,
+        leakage_risk_score: 85,
+      },
+    ];
+
+    const mockSelect = jest.fn().mockReturnThis();
+    const mockEq = jest.fn().mockReturnThis();
+    const mockOr = jest.fn().mockReturnThis();
+    const mockOrder = jest.fn().mockResolvedValue({
+      data: mockPatients,
+      error: null,
+    });
+
+    mockSupabase.from.mockReturnValue({
+      select: mockSelect,
+      eq: mockEq,
+      or: mockOr,
+      order: mockOrder,
+    } as any);
+
+    // Chain the methods properly
+    mockSelect.mockReturnValue({
+      eq: mockEq,
+    });
+
+    mockEq.mockReturnValue({
+      eq: mockEq,
+      or: mockOr,
+    });
+
+    mockOr.mockReturnValue({
+      order: mockOrder,
+    });
+
+    const filters = { 
+      search: 'Hip',
+      riskLevel: 'high' as const,
+      referralStatus: 'needed' as const
+    };
+    
+    const { result } = renderHook(() => usePatients(filters), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(mockEq).toHaveBeenCalledWith('leakage_risk_level', 'high');
+    expect(mockEq).toHaveBeenCalledWith('referral_status', 'needed');
+    expect(mockOr).toHaveBeenCalledWith('name.ilike.%Hip%,diagnosis.ilike.%Hip%,required_followup.ilike.%Hip%');
+    expect(result.current.data).toHaveLength(1);
+  });
 });
