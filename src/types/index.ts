@@ -73,8 +73,8 @@ export interface ProvidersResponse {
   count: number;
   error?: string;
 }
-// Searc
-h and filter types
+
+// Search and filter types
 export interface PatientFilters {
   riskLevel?: "low" | "medium" | "high";
   referralStatus?: "needed" | "sent" | "scheduled" | "completed";

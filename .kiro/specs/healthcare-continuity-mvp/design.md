@@ -385,3 +385,15 @@ async function handleApiCall<T>(apiCall: () => Promise<T>): Promise<T | null> {
 - **Error Tracking**: Automated error reporting and alerting
 - **User Analytics**: Usage patterns and feature adoption
 - **Database Monitoring**: Query performance and resource utilization
+
+## Code Quality Standards
+
+### File Size Management
+- **Maximum File Size**: Individual source files must not exceed 200-300 lines of code
+- **Refactoring Trigger**: When a file approaches or exceeds this limit, it must be refactored into smaller, more focused modules
+- **Refactoring Strategy**: 
+  - Extract reusable functions into utility modules
+  - Split large components into smaller, single-responsibility components
+  - Separate business logic from presentation logic
+  - Create custom hooks for complex state management
+- **Benefits**: Improved maintainability, better testability, enhanced code readability, and easier code reviews

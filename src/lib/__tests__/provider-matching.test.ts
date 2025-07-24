@@ -94,7 +94,7 @@ describe('Provider Matching Functions', () => {
       
       // Edge cases
       expect(isInNetwork(mockProviders[0], '')).toBe(false);
-      expect(isInNetwork({ ...mockProviders[0], in_network_plans: [] }, 'Blue Cross Blue Shield')).toBe(false);
+      expect(isInNetwork({ ...mockProviders[0], in_network_plans: [], accepted_insurance: [] }, 'Blue Cross Blue Shield')).toBe(false);
     });
   });
 

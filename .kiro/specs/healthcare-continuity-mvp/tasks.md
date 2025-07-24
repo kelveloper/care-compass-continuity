@@ -112,7 +112,7 @@
 
 #### Task 3.2: Patient Detail View Updates
 
-- [ ] Replace mock data with `usePatient` hook
+- [x] Replace mock data with `usePatient` hook
 - [ ] Connect provider matching to real database
 - [ ] Implement referral status updates
 - [ ] Add patient information editing capability

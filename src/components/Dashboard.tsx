@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserCircle, Clock, AlertCircle, CheckCircle2, Loader2, RefreshCw, Search, Filter, Wifi, X } from "lucide-react";
-import { PatientDetailView } from "./PatientDetailView";
+import { PatientDetailContainer } from "./PatientDetailContainer";
 import { usePatients } from "@/hooks/use-patients";
 import { Patient, PatientFilters } from "@/types";
 import { Input } from "@/components/ui/input";
@@ -123,20 +123,20 @@ export const Dashboard = () => {
     prevPatientsRef.current = patients;
   }, [patients]);
 
-  if (selectedPatient) {
-    return (
-      <PatientDetailView 
-        patient={selectedPatient} 
-        onBack={() => setSelectedPatient(null)}
-      />
-    );
-  }
-
   // Since we're using server-side filtering, we don't need to filter the patients again
   // Just use the patients directly from the hook, which are already sorted by risk score
   const sortedPatients = useMemo(() => {
     return patients || [];
   }, [patients]);
+
+  if (selectedPatient) {
+    return (
+      <PatientDetailContainer 
+        patientId={selectedPatient.id} 
+        onBack={() => setSelectedPatient(null)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

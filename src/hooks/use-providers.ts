@@ -94,7 +94,7 @@ export function useProvidersByInsurance(insurance?: string) {
       const { data, error } = await supabase
         .from('providers')
         .select('*')
-        .contains('accepted_insurance', [insurance])
+        .or(`in_network_plans.cs.{${insurance}},accepted_insurance.cs.{${insurance}}`)
         .order('rating', { ascending: false });
 
       if (error) {

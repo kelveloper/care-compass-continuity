@@ -15,7 +15,10 @@ interface PatientDetailContainerProps {
  * Handles loading states, error states, and missing data gracefully
  */
 export const PatientDetailContainer = ({ patientId, onBack }: PatientDetailContainerProps) => {
-  const { data: patient, isLoading, error, isNotFound, refetch } = usePatient(patientId);
+  const { data: patient, isLoading, error, refetch } = usePatient(patientId);
+  
+  // Check if patient was not found based on error message
+  const isNotFound = error?.message.includes('not found') ?? false;
 
   // Loading state
   if (isLoading) {
@@ -145,20 +148,7 @@ export const PatientDetailContainer = ({ patientId, onBack }: PatientDetailConta
     );
   }
 
-  // Transform the patient data to match the PatientDetailView interface
-  const transformedPatient = {
-    id: patient.id,
-    name: patient.name,
-    diagnosis: patient.diagnosis,
-    dischargeDate: patient.discharge_date,
-    requiredFollowup: patient.required_followup,
-    leakageRisk: patient.leakageRisk,
-    referralStatus: patient.referral_status,
-    insurance: patient.insurance,
-    address: patient.address,
-    dob: patient.date_of_birth,
-  };
-
-  // Success state - render the patient detail view
-  return <PatientDetailView patient={transformedPatient} onBack={onBack} />;
+  // Success state - render the patient detail view with the enhanced patient data
+  // The patient data from usePatient is already enhanced with computed fields
+  return <PatientDetailView patient={patient} onBack={onBack} />;
 };

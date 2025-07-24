@@ -1,8 +1,8 @@
+import React, { ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useProviderMatch } from '../use-provider-match';
 import { Patient, Provider } from '@/types';
-import { ReactNode } from 'react';
 
 // Mock the Supabase client
 jest.mock('@/integrations/supabase/client', () => ({

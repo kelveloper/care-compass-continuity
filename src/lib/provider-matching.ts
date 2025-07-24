@@ -58,13 +58,22 @@ export function getApproximateCoordinates(address: string): { lat: number; lng: 
  * @returns boolean indicating if the provider is in-network
  */
 export function isInNetwork(provider: Provider, patientInsurance: string): boolean {
-  if (!patientInsurance || !provider.in_network_plans || provider.in_network_plans.length === 0) {
+  if (!patientInsurance) {
+    return false;
+  }
+  
+  // Check both in_network_plans and accepted_insurance for compatibility
+  const networkPlans = provider.in_network_plans || [];
+  const acceptedInsurance = provider.accepted_insurance || [];
+  
+  if (networkPlans.length === 0 && acceptedInsurance.length === 0) {
     return false;
   }
   
   const patientInsuranceLower = patientInsurance.toLowerCase();
   
-  return provider.in_network_plans.some(plan => {
+  // Check in_network_plans first (primary field in database)
+  const inNetworkMatch = networkPlans.some(plan => {
     const planLower = plan.toLowerCase();
     
     // Exact match
@@ -76,6 +85,24 @@ export function isInNetwork(provider: Provider, patientInsurance: string): boole
     // or if the patient's insurance contains the plan name
     return planLower.includes(patientInsuranceLower) || 
            patientInsuranceLower.includes(planLower);
+  });
+  
+  if (inNetworkMatch) {
+    return true;
+  }
+  
+  // Fallback to accepted_insurance for backward compatibility
+  return acceptedInsurance.some(insurance => {
+    const insuranceLower = insurance.toLowerCase();
+    
+    // Exact match
+    if (insuranceLower === patientInsuranceLower) {
+      return true;
+    }
+    
+    // Partial match
+    return insuranceLower.includes(patientInsuranceLower) || 
+           patientInsuranceLower.includes(insuranceLower);
   });
 }
 
