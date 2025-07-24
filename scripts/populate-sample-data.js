@@ -500,12 +500,80 @@ const sampleProviders = [
   }
 ];
 
+// Check if tables exist
+async function checkTablesExist() {
+  console.log("\n🔍 Checking if required tables exist...");
+  
+  // Check if referrals table exists
+  const { error: referralsError } = await supabase.from('referrals').select('id').limit(1);
+  const referralsExists = !referralsError || referralsError.code !== '42P01';
+  
+  // Check if referral_history table exists
+  const { error: historyError } = await supabase.from('referral_history').select('id').limit(1);
+  const historyExists = !historyError || historyError.code !== '42P01';
+  
+  console.log(`   Referrals table exists: ${referralsExists ? '✅' : '❌'}`);
+  console.log(`   Referral history table exists: ${historyExists ? '✅' : '❌'}`);
+  
+  if (!referralsExists || !historyExists) {
+    console.log("\n⚠️ Some required tables are missing!");
+    console.log("Please run the following SQL in the Supabase SQL Editor to create the missing tables:");
+    
+    if (!referralsExists) {
+      console.log(`
+CREATE TABLE IF NOT EXISTS public.referrals (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  patient_id UUID NOT NULL REFERENCES public.patients(id),
+  provider_id UUID NOT NULL REFERENCES public.providers(id),
+  service_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'scheduled', 'completed', 'cancelled')),
+  scheduled_date TIMESTAMP WITH TIME ZONE,
+  completed_date TIMESTAMP WITH TIME ZONE,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+      `);
+    }
+    
+    if (!historyExists) {
+      console.log(`
+CREATE TABLE IF NOT EXISTS public.referral_history (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  referral_id UUID NOT NULL REFERENCES public.referrals(id),
+  status TEXT NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_by TEXT
+);
+      `);
+    }
+    
+    console.log("\nAfter creating these tables, run this script again to populate the data.");
+    return false;
+  }
+  
+  return true;
+}
+
 async function populateDatabase() {
   try {
     console.log("🚀 Starting database population...");
 
+    // Check if tables exist
+    const tablesExist = await checkTablesExist();
+    if (!tablesExist) {
+      return;
+    }
+
     // Clear existing data first
     console.log("\n🧹 Clearing existing data...");
+    try {
+      await supabase.from("referral_history").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabase.from("referrals").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    } catch (error) {
+      console.log("Note: Could not clear referral tables, they may be empty or not exist yet.");
+    }
     await supabase.from("patients").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     await supabase.from("providers").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Patient, PatientFilters } from '@/types';
-import { enhancePatientData } from '@/lib/risk-calculator';
+import { enhancePatientDataSync } from '@/lib/risk-calculator';
 import type { Database } from '@/integrations/supabase/types';
 import { useEffect } from 'react';
 
@@ -23,7 +23,7 @@ const enhancePatients = (data: DatabasePatient[]): Patient[] => {
     };
 
     // Enhance with computed fields (age, days since discharge, detailed risk factors)
-    return enhancePatientData(patient);
+    return enhancePatientDataSync(patient);
   });
 
   // Sort by leakage risk score (highest risk first) as per requirements
@@ -257,7 +257,7 @@ export function usePatient(patientId: string | undefined) {
         };
 
         // Enhance with computed fields (age, days since discharge, detailed risk factors)
-        return enhancePatientData(patient);
+        return enhancePatientDataSync(patient);
       } catch (error) {
         // Enhanced error handling with more context
         console.error(`Error fetching patient ${patientId}:`, error);

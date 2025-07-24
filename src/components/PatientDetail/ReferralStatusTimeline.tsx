@@ -17,6 +17,9 @@ export const ReferralStatusTimeline = ({
   error,
   history,
 }: ReferralStatusTimelineProps) => {
+  // Check if we have history data to display
+  const hasHistory = Array.isArray(history) && history.length > 0;
+  
   return (
     <Card>
       <CardHeader>
@@ -126,7 +129,21 @@ export const ReferralStatusTimeline = ({
               }
             />
 
-            {history.length > 0 && <ReferralHistory history={history} />}
+            {hasHistory && <ReferralHistory history={history} />}
+            
+            {activeReferral && !hasHistory && (
+              <div className="mt-6 pt-4 border-t border-border text-center text-sm text-muted-foreground">
+                No detailed history available for this referral.
+              </div>
+            )}
+          </div>
+        )}
+        
+        {!isLoading && error && (
+          <div className="p-4 text-center">
+            <p className="text-sm text-destructive">
+              Error loading referral timeline: {error.message}
+            </p>
           </div>
         )}
       </CardContent>
@@ -186,11 +203,16 @@ const ReferralHistory = ({ history }: ReferralHistoryProps) => (
               {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
             </p>
             <span className="text-muted-foreground">
-              {new Date(entry.created_at).toLocaleDateString()}
+              {new Date(entry.created_at).toLocaleString()}
             </span>
           </div>
           {entry.notes && (
             <p className="text-muted-foreground mt-1">{entry.notes}</p>
+          )}
+          {entry.created_by && (
+            <p className="text-xs text-muted-foreground mt-1">
+              By: {entry.created_by}
+            </p>
           )}
         </div>
       ))}

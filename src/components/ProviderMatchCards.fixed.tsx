@@ -20,6 +20,7 @@ export const ProviderMatchCards = ({
 }: ProviderMatchCardsProps) => {
   const { findMatches, isMatching, error, providersLoading, isReady, refreshProviders } = useProviderMatch();
   const [matches, setMatches] = useState<ProviderMatch[]>([]);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -29,6 +30,8 @@ export const ProviderMatchCards = ({
       }
 
       try {
+        setLoadingError(null);
+        
         // First refresh providers to ensure we have the latest data
         await refreshProviders();
         
@@ -81,6 +84,7 @@ export const ProviderMatchCards = ({
         }
       } catch (err) {
         console.error('Failed to find provider matches:', err);
+        setLoadingError(err instanceof Error ? err.message : 'Unknown error occurred');
         toast({
           title: "Error finding providers",
           description: "There was a problem connecting to the database. Please try again.",
@@ -104,6 +108,46 @@ export const ProviderMatchCards = ({
   };
 
   const specialtyType = getSpecialtyType(patient.required_followup);
+
+  // Handle provider selection with proper error handling
+  const handleProviderSelection = (match: ProviderMatch) => {
+    try {
+      // Create a safe provider object with all required properties
+      const safeProvider: Provider = {
+        ...match.provider,
+        // Ensure required properties exist
+        id: match.provider.id || 'unknown',
+        name: match.provider.name || 'Unknown Provider',
+        type: match.provider.type || 'Unknown Type',
+        address: match.provider.address || 'Unknown Address',
+        phone: match.provider.phone || 'Unknown',
+        // Ensure arrays are properly initialized
+        specialties: Array.isArray(match.provider.specialties) ? match.provider.specialties : [],
+        accepted_insurance: Array.isArray(match.provider.accepted_insurance) ? match.provider.accepted_insurance : [],
+        in_network_plans: Array.isArray(match.provider.in_network_plans) ? match.provider.in_network_plans : [],
+        // Ensure numeric values are numbers
+        rating: typeof match.provider.rating === 'number' ? match.provider.rating : 0,
+        // Add computed fields
+        distance: typeof match.distance === 'number' ? match.distance : 0,
+        distanceText: `${typeof match.distance === 'number' ? match.distance : 0} miles`,
+        availability: match.provider.availability_next || "Call to schedule",
+        inNetwork: !!match.inNetwork,
+        matchScore: typeof match.matchScore === 'number' ? match.matchScore : 0,
+        // Ensure dates are strings
+        created_at: match.provider.created_at || new Date().toISOString(),
+      };
+      
+      // Call the onProviderSelected callback with the safe provider
+      onProviderSelected(safeProvider);
+    } catch (err) {
+      console.error('Error selecting provider:', err);
+      toast({
+        title: "Error Selecting Provider",
+        description: "There was a problem selecting this provider. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <Card>
@@ -133,14 +177,14 @@ export const ProviderMatchCards = ({
         )}
 
         {/* Error State */}
-        {error && !(isMatching || providersLoading) && (
+        {(error || loadingError) && !(isMatching || providersLoading) && (
           <div className="flex flex-col items-center justify-center py-8 space-y-4">
             <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-6 w-6" />
               <span className="font-medium">Failed to load providers</span>
             </div>
             <p className="text-sm text-muted-foreground text-center max-w-md">
-              {error}
+              {error || loadingError || "An unknown error occurred"}
             </p>
             <Button 
               onClick={async () => {
@@ -184,12 +228,12 @@ export const ProviderMatchCards = ({
         )}
 
         {/* Provider Matches */}
-        {!(isMatching || providersLoading) && !error && matches.length > 0 && (
+        {!(isMatching || providersLoading) && !error && !loadingError && matches.length > 0 && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {matches.map((match, index) => (
                 <div
-                  key={match.provider.id}
+                  key={match.provider.id || index}
                   className={`relative rounded-lg border-2 transition-all hover:shadow-lg ${
                     index === 0 
                       ? 'border-primary bg-primary-light/30' 
@@ -205,11 +249,11 @@ export const ProviderMatchCards = ({
                   <div className="p-6 space-y-4">
                     {/* Provider Header */}
                     <div>
-                      <h3 className="font-bold text-lg text-foreground">{match.provider.name}</h3>
-                      <p className="text-sm text-muted-foreground">{match.provider.type}</p>
+                      <h3 className="font-bold text-lg text-foreground">{match.provider.name || 'Unknown Provider'}</h3>
+                      <p className="text-sm text-muted-foreground">{match.provider.type || 'Unknown Type'}</p>
                       <div className="flex items-center gap-1 mt-1">
                         <Star className="h-4 w-4 fill-warning text-warning" />
-                        <span className="text-sm font-medium">{match.provider.rating}</span>
+                        <span className="text-sm font-medium">{match.provider.rating || 0}</span>
                         <span className="text-xs text-muted-foreground">(Reviews)</span>
                       </div>
                     </div>
@@ -230,8 +274,10 @@ export const ProviderMatchCards = ({
                         <MapPin className="h-4 w-4 text-primary mt-0.5" />
                         <div>
                           <p className="text-sm font-medium text-foreground">Distance</p>
-                          <p className="text-sm text-muted-foreground">{match.distance} miles from patient</p>
-                          <p className="text-xs text-muted-foreground">{match.provider.address}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {typeof match.distance === 'number' ? `${match.distance} miles` : 'Unknown'} from patient
+                          </p>
+                          <p className="text-xs text-muted-foreground">{match.provider.address || 'Unknown Address'}</p>
                         </div>
                       </div>
 
@@ -252,14 +298,19 @@ export const ProviderMatchCards = ({
                     <div>
                       <p className="text-sm font-medium text-foreground mb-2">Specialties</p>
                       <div className="flex flex-wrap gap-1">
-                        {match.provider.specialties.slice(0, 2).map((specialty) => (
-                          <Badge key={specialty} variant="outline" className="text-xs">
+                        {Array.isArray(match.provider.specialties) && match.provider.specialties.slice(0, 2).map((specialty, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
                             {specialty}
                           </Badge>
                         ))}
-                        {match.provider.specialties.length > 2 && (
+                        {Array.isArray(match.provider.specialties) && match.provider.specialties.length > 2 && (
                           <Badge variant="outline" className="text-xs">
                             +{match.provider.specialties.length - 2} more
+                          </Badge>
+                        )}
+                        {(!Array.isArray(match.provider.specialties) || match.provider.specialties.length === 0) && (
+                          <Badge variant="outline" className="text-xs">
+                            No specialties listed
                           </Badge>
                         )}
                       </div>
@@ -267,11 +318,14 @@ export const ProviderMatchCards = ({
 
                     {/* Match Score Breakdown */}
                     <div className="text-xs text-muted-foreground">
-                      <p className="font-medium mb-1">Match Score: {match.matchScore}%</p>
+                      <p className="font-medium mb-1">Match Score: {match.matchScore || 0}%</p>
                       <div className="space-y-1">
-                        {match.explanation.reasons.map((reason, idx) => (
+                        {Array.isArray(match.explanation.reasons) && match.explanation.reasons.map((reason, idx) => (
                           <p key={idx}>• {reason}</p>
                         ))}
+                        {(!Array.isArray(match.explanation.reasons) || match.explanation.reasons.length === 0) && (
+                          <p>• Provider matches patient needs</p>
+                        )}
                       </div>
                     </div>
 
@@ -279,34 +333,14 @@ export const ProviderMatchCards = ({
                     <div className="space-y-2">
                       <Button 
                         className="w-full" 
-                        onClick={() => {
-                          // Create a safe provider object with all required properties
-                          const safeProvider = {
-                            ...match.provider,
-                            // Ensure distance is a number
-                            distance: typeof match.distance === 'number' ? match.distance : 0,
-                            // Add distanceText
-                            distanceText: `${match.distance} miles`,
-                            // Ensure availability is a string
-                            availability: match.provider.availability_next || "Call to schedule",
-                            // Ensure inNetwork is a boolean
-                            inNetwork: !!match.inNetwork,
-                            // Ensure other properties have default values
-                            rating: match.provider.rating || 0,
-                            specialties: match.provider.specialties || [],
-                            accepted_insurance: match.provider.accepted_insurance || [],
-                            in_network_plans: match.provider.in_network_plans || [],
-                          };
-                          
-                          onProviderSelected(safeProvider);
-                        }}
+                        onClick={() => handleProviderSelection(match)}
                         variant={index === 0 ? "default" : "outline"}
                       >
                         Select This Provider
                       </Button>
                       <Button variant="ghost" size="sm" className="w-full gap-2">
                         <Phone className="h-4 w-4" />
-                        Call {match.provider.phone}
+                        Call {match.provider.phone || 'Provider'}
                       </Button>
                     </div>
                   </div>
@@ -329,7 +363,7 @@ export const ProviderMatchCards = ({
         )}
 
         {/* No Matches State */}
-        {!(isMatching || providersLoading) && !error && matches.length === 0 && (
+        {!(isMatching || providersLoading) && !error && !loadingError && matches.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 space-y-4">
             <AlertCircle className="h-12 w-12 text-muted-foreground" />
             <div className="text-center">

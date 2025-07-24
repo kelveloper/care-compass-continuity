@@ -7,9 +7,30 @@ import {
   calculateInsuranceRisk,
   calculateGeographicRisk,
   calculateLeakageRisk,
-  enhancePatientData
+  enhancePatientData,
+  fetchReferralHistory
 } from '../risk-calculator';
 import { Patient } from '@/types';
+
+// Mock the supabase client
+jest.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    from: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    order: jest.fn().mockReturnThis(),
+    then: jest.fn().mockResolvedValue({ data: [], error: null })
+  }
+}));
+
+// Mock fetchReferralHistory function
+jest.mock('../risk-calculator', () => {
+  const originalModule = jest.requireActual('../risk-calculator');
+  return {
+    ...originalModule,
+    fetchReferralHistory: jest.fn().mockResolvedValue([])
+  };
+});
 
 // Mock patient data for testing
 const mockPatient: Patient = {
@@ -75,8 +96,22 @@ describe('Risk Calculator', () => {
   });
 
   describe('Comprehensive risk calculation', () => {
-    test('calculateLeakageRisk should return proper risk assessment', () => {
-      const risk = calculateLeakageRisk(mockPatient);
+    // Mock the fetchReferralHistory function to avoid actual API calls
+    beforeEach(() => {
+      jest.spyOn(global, 'fetch').mockImplementation(() => 
+        Promise.resolve({
+          json: () => Promise.resolve([]),
+          ok: true
+        } as Response)
+      );
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    test('calculateLeakageRisk should return proper risk assessment', async () => {
+      const risk = await calculateLeakageRisk(mockPatient);
       expect(risk.score).toBeGreaterThan(0);
       expect(risk.score).toBeLessThanOrEqual(100);
       expect(['low', 'medium', 'high']).toContain(risk.level);
@@ -86,20 +121,21 @@ describe('Risk Calculator', () => {
       expect(risk.factors.timeSinceDischarge).toBeGreaterThanOrEqual(0);
       expect(risk.factors.insuranceType).toBeGreaterThan(0);
       expect(risk.factors.geographicFactors).toBeGreaterThan(0);
+      expect(risk.factors.previousReferralHistory).toBeDefined();
     });
 
-    test('calculateLeakageRisk should handle missing data gracefully', () => {
+    test('calculateLeakageRisk should handle missing data gracefully', async () => {
       const partialPatient = {
         date_of_birth: '1960-01-01',
         diagnosis: 'Unknown procedure'
       };
-      const risk = calculateLeakageRisk(partialPatient);
+      const risk = await calculateLeakageRisk(partialPatient);
       expect(risk.score).toBeGreaterThan(0);
       expect(risk.score).toBeLessThanOrEqual(100);
       expect(['low', 'medium', 'high']).toContain(risk.level);
     });
 
-    test('risk level thresholds should work correctly', () => {
+    test('risk level thresholds should work correctly', async () => {
       // Test high risk scenario
       const highRiskPatient = {
         date_of_birth: '1940-01-01', // 85 years old
@@ -108,7 +144,7 @@ describe('Risk Calculator', () => {
         insurance: 'Medicaid', // High risk insurance
         address: 'Rural Area, MA' // High geographic risk
       };
-      const highRisk = calculateLeakageRisk(highRiskPatient);
+      const highRisk = await calculateLeakageRisk(highRiskPatient);
       expect(highRisk.level).toBe('high');
       expect(highRisk.score).toBeGreaterThanOrEqual(70);
 
@@ -120,15 +156,61 @@ describe('Risk Calculator', () => {
         insurance: 'Blue Cross Blue Shield', // Good insurance
         address: 'Boston, MA' // Good location
       };
-      const lowRisk = calculateLeakageRisk(lowRiskPatient);
+      const lowRisk = await calculateLeakageRisk(lowRiskPatient);
       expect(lowRisk.level).toBe('low');
       expect(lowRisk.score).toBeLessThan(40);
+    });
+    
+    test('referral history should impact risk score', async () => {
+      // Mock a patient with problematic referral history
+      const patientWithReferrals = {
+        ...mockPatient,
+        id: 'patient-with-referrals'
+      };
+      
+      // Mock fetchReferralHistory to return problematic referrals
+      jest.spyOn(global, 'fetchReferralHistory').mockImplementation(() => 
+        Promise.resolve([
+          {
+            id: 'ref1',
+            patient_id: 'patient-with-referrals',
+            provider_id: 'provider1',
+            service_type: 'Cardiology',
+            status: 'cancelled',
+            created_at: '2025-01-01T00:00:00Z',
+            updated_at: '2025-01-05T00:00:00Z'
+          },
+          {
+            id: 'ref2',
+            patient_id: 'patient-with-referrals',
+            provider_id: 'provider2',
+            service_type: 'Cardiology',
+            status: 'cancelled',
+            created_at: '2025-01-10T00:00:00Z',
+            updated_at: '2025-01-15T00:00:00Z'
+          }
+        ])
+      );
+      
+      const risk = await calculateLeakageRisk(patientWithReferrals);
+      expect(risk.factors.previousReferralHistory).toBeGreaterThan(50); // Should be higher risk due to cancelled referrals
     });
   });
 
   describe('Patient data enhancement', () => {
-    test('enhancePatientData should add computed fields', () => {
-      const enhanced = enhancePatientData(mockPatient);
+    // Mock the fetchReferralHistory function to avoid actual API calls
+    beforeEach(() => {
+      jest.spyOn(global, 'fetchReferralHistory').mockImplementation(() => 
+        Promise.resolve([])
+      );
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    test('enhancePatientData should add computed fields', async () => {
+      const enhanced = await enhancePatientData(mockPatient);
       expect(enhanced.age).toBeDefined();
       expect(enhanced.age).toBeGreaterThan(70);
       expect(enhanced.daysSinceDischarge).toBeDefined();
@@ -136,14 +218,27 @@ describe('Risk Calculator', () => {
       expect(enhanced.leakageRisk.factors).toBeDefined();
       expect(enhanced.leakageRisk.factors.age).toBeGreaterThan(0);
       expect(enhanced.leakageRisk.factors.diagnosisComplexity).toBeGreaterThan(0);
+      expect(enhanced.leakageRisk.factors.previousReferralHistory).toBeDefined();
     });
 
-    test('enhancePatientData should preserve original patient data', () => {
-      const enhanced = enhancePatientData(mockPatient);
+    test('enhancePatientData should preserve original patient data', async () => {
+      const enhanced = await enhancePatientData(mockPatient);
       expect(enhanced.id).toBe(mockPatient.id);
       expect(enhanced.name).toBe(mockPatient.name);
       expect(enhanced.diagnosis).toBe(mockPatient.diagnosis);
       expect(enhanced.insurance).toBe(mockPatient.insurance);
+    });
+    
+    test('enhancePatientDataSync should work without async operations', () => {
+      const enhanced = enhancePatientDataSync(mockPatient);
+      expect(enhanced.age).toBeDefined();
+      expect(enhanced.age).toBeGreaterThan(70);
+      expect(enhanced.daysSinceDischarge).toBeDefined();
+      expect(enhanced.daysSinceDischarge).toBeGreaterThanOrEqual(0);
+      expect(enhanced.leakageRisk.factors).toBeDefined();
+      expect(enhanced.leakageRisk.factors.age).toBeGreaterThan(0);
+      expect(enhanced.leakageRisk.factors.diagnosisComplexity).toBeGreaterThan(0);
+      // Note: previousReferralHistory won't be available in sync version
     });
   });
 });

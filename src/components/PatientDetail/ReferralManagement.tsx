@@ -166,7 +166,9 @@ const SelectedProviderCard = ({
         <p className="text-muted-foreground">
           Next available: {provider.availability}
         </p>
-        <p className="text-muted-foreground">Distance: {provider.distance}</p>
+        <p className="text-muted-foreground">
+          Distance: {provider.distanceText || (typeof provider.distance === 'number' ? `${provider.distance} miles` : 'Unknown')}
+        </p>
       </div>
     </div>
     <Button

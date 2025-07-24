@@ -4,17 +4,18 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { ProviderMatchCards } from "./ProviderMatchCards";
 import {
-  PatientSummaryPanel,
+  EditablePatientSummaryPanel,
   ReferralManagement,
   RiskAnalysisCard,
   ReferralStatusTimeline,
   LoadingSkeleton,
   ErrorState,
 } from "./PatientDetail";
-import { useReferrals } from "@/hooks/use-referrals";
+import { useReferrals } from "@/hooks/use-referrals-safe";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Patient, Provider, ReferralStatus } from "@/types";
+import { supabase } from "@/integrations/supabase/client";
 
 interface PatientDetailViewProps {
   patient: Patient;
@@ -45,6 +46,7 @@ export const PatientDetailView = ({
     cancelReferral,
     getPatientReferrals,
     getReferralById,
+    getReferralHistory,
   } = useReferrals(patient.current_referral_id || undefined);
 
   useEffect(() => {
@@ -52,7 +54,15 @@ export const PatientDetailView = ({
       if (!patient.id) return;
 
       try {
-        const referrals = await getPatientReferrals(patient.id);
+        // Add error handling for getPatientReferrals
+        let referrals = [];
+        try {
+          referrals = await getPatientReferrals(patient.id);
+        } catch (err) {
+          console.error("Error fetching patient referrals:", err);
+          referrals = [];
+        }
+        
         const activeRef = referrals.find((ref) => ref.status !== "cancelled");
 
         if (activeRef) {
@@ -68,18 +78,76 @@ export const PatientDetailView = ({
             notes: activeRef.notes || undefined,
           });
 
-          setSelectedProvider({
-            id: activeRef.provider_id,
-            name: "Selected Provider",
-            address: "Provider Address",
-            availability: activeRef.scheduled_date
-              ? format(
-                  new Date(activeRef.scheduled_date),
-                  "MMM d, yyyy 'at' h:mm a"
-                )
-              : "Pending",
-            distance: "Pending",
-          } as any);
+          // Fetch the provider details
+          try {
+            const { data: providerData } = await supabase
+              .from('providers')
+              .select('*')
+              .eq('id', activeRef.provider_id)
+              .single();
+              
+            if (providerData) {
+              // Create a formatted availability string but don't add it directly to the provider object
+              const formattedAvailability = activeRef.scheduled_date
+                ? format(new Date(activeRef.scheduled_date), "MMM d, yyyy 'at' h:mm a")
+                : "Pending";
+                
+              // Store the provider data with proper typing
+              setSelectedProvider({
+                ...providerData,
+                // Only include properties that are part of the Provider interface
+                distance: 0, // Set a default numeric value
+                distanceText: "Pending", // We would calculate this in a real app
+                // Store availability in availability_next which is part of the Provider interface
+                availability_next: formattedAvailability
+              });
+            } else {
+              // Fallback if provider not found - create a properly typed Provider object
+              setSelectedProvider({
+                id: activeRef.provider_id,
+                name: "Selected Provider",
+                type: "Unknown",
+                address: "Provider Address",
+                phone: "Unknown",
+                specialties: [],
+                accepted_insurance: [],
+                rating: 0,
+                in_network_plans: [],
+                created_at: new Date().toISOString(),
+                distance: 0,
+                distanceText: "Pending",
+                // Store availability in availability_next which is part of the Provider interface
+                availability_next: activeRef.scheduled_date
+                  ? format(new Date(activeRef.scheduled_date), "MMM d, yyyy 'at' h:mm a")
+                  : "Pending"
+              });
+            }
+          } catch (providerErr) {
+            console.error("Error fetching provider details:", providerErr);
+            // Fallback if provider fetch fails - create a properly typed Provider object
+            setSelectedProvider({
+              id: activeRef.provider_id,
+              name: "Selected Provider",
+              type: "Unknown",
+              address: "Provider Address",
+              phone: "Unknown",
+              specialties: [],
+              accepted_insurance: [],
+              rating: 0,
+              in_network_plans: [],
+              created_at: new Date().toISOString(),
+              distance: 0,
+              distanceText: "Pending",
+              // Store availability in availability_next which is part of the Provider interface
+              availability_next: activeRef.scheduled_date
+                ? format(new Date(activeRef.scheduled_date), "MMM d, yyyy 'at' h:mm a")
+                : "Pending"
+            });
+          }
+          
+          // Fetch referral history
+          const historyData = await getReferralHistory(activeRef.id);
+          setHistory(historyData);
         }
       } catch (err) {
         console.error("Error fetching patient referrals:", err);
@@ -92,13 +160,55 @@ export const PatientDetailView = ({
     };
 
     fetchPatientReferrals();
-  }, [patient.id, getPatientReferrals, toast]);
+  }, [patient.id, getPatientReferrals, getReferralHistory, toast]);
 
   const handleAddFollowupCare = () => setShowProviderMatch(true);
 
-  const handleProviderSelected = (provider: Provider) => {
-    setSelectedProvider(provider);
-    setShowProviderMatch(false);
+  const handleProviderSelected = (provider: any) => {
+    try {
+      // Ensure the provider object has the correct types for all properties
+      const safeProvider: Provider = {
+        ...provider,
+        // Ensure required properties exist
+        id: provider.id || 'unknown',
+        name: provider.name || 'Unknown Provider',
+        type: provider.type || 'Unknown',
+        address: provider.address || 'Unknown Address',
+        phone: provider.phone || 'Unknown',
+        // Ensure distance is a number
+        distance: typeof provider.distance === 'number' ? provider.distance : 0,
+        // Add distanceText if it doesn't exist
+        distanceText: provider.distanceText || (typeof provider.distance === 'number' ? `${provider.distance} miles` : 'Unknown'),
+        // Ensure other properties have default values if missing
+        rating: provider.rating || 0,
+        specialties: provider.specialties || [],
+        accepted_insurance: provider.accepted_insurance || [],
+        in_network_plans: provider.in_network_plans || [],
+        // Add any other required properties
+        created_at: provider.created_at || new Date().toISOString(),
+        // If provider has an availability property, move it to availability_next
+        availability_next: provider.availability || provider.availability_next || null,
+        latitude: provider.latitude || null,
+        longitude: provider.longitude || null
+      };
+      
+      // Store the complete provider object from the database
+      setSelectedProvider(safeProvider);
+      setShowProviderMatch(false);
+      
+      // Show confirmation toast
+      toast({
+        title: "Provider Selected",
+        description: `${safeProvider.name} has been selected for referral.`,
+      });
+    } catch (error) {
+      console.error("Error selecting provider:", error);
+      toast({
+        title: "Error Selecting Provider",
+        description: "There was a problem selecting this provider. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSendReferral = async () => {
@@ -122,6 +232,10 @@ export const PatientDetailView = ({
           updatedAt: newReferral.updated_at,
           notes: newReferral.notes || undefined,
         });
+
+        // Fetch the updated history
+        const historyData = await getReferralHistory(newReferral.id);
+        setHistory(historyData);
 
         toast({
           title: "Referral Sent",
@@ -159,6 +273,10 @@ export const PatientDetailView = ({
         scheduledDate: scheduledDateStr,
         updatedAt: new Date().toISOString(),
       });
+      
+      // Fetch the updated history
+      const historyData = await getReferralHistory(activeReferral.id);
+      setHistory(historyData);
     }
   };
 
@@ -177,6 +295,10 @@ export const PatientDetailView = ({
         completedDate: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
+      
+      // Fetch the updated history
+      const historyData = await getReferralHistory(activeReferral.id);
+      setHistory(historyData);
     }
   };
 
@@ -189,14 +311,25 @@ export const PatientDetailView = ({
     );
 
     if (success) {
+      // We still want to keep the history for the cancelled referral
+      const historyData = await getReferralHistory(activeReferral.id);
+      setHistory(historyData);
+      
+      // Reset the active referral and selected provider
       setActiveReferral(null);
       setSelectedProvider(null);
     }
   };
 
-  const handleRetryLoad = () => {
+  const handleRetryLoad = async () => {
     if (patient.current_referral_id) {
-      getReferralById(patient.current_referral_id);
+      const referral = await getReferralById(patient.current_referral_id);
+      
+      if (referral) {
+        // Fetch the updated history
+        const historyData = await getReferralHistory(referral.id);
+        setHistory(historyData);
+      }
     }
   };
 
@@ -257,7 +390,16 @@ export const PatientDetailView = ({
       <div className="container mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1">
-            <PatientSummaryPanel patient={patient} />
+            <EditablePatientSummaryPanel 
+            patient={patient}
+            onPatientUpdated={(updatedPatient) => {
+              // Update local state if needed
+              toast({
+                title: "Patient Updated",
+                description: "Patient information has been successfully updated.",
+              });
+            }}
+          />
           </div>
 
           <div className="lg:col-span-2 space-y-6">

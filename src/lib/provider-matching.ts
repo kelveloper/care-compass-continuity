@@ -425,16 +425,70 @@ export function calculateProviderMatch(
 
 /**
  * Find and rank providers for a patient
+ * Enhanced to handle real data with proper error handling and validation
  */
 export function findMatchingProviders(
   providers: Provider[],
   patient: Patient,
   limit: number = 5
 ): ProviderMatch[] {
-  const matches = providers
-    .map(provider => calculateProviderMatch(provider, patient))
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, limit);
+  if (!Array.isArray(providers) || providers.length === 0) {
+    console.warn('No providers available for matching');
+    return [];
+  }
   
-  return matches;
+  if (!patient || !patient.address || !patient.insurance || !patient.required_followup) {
+    console.warn('Patient data incomplete for matching');
+    return [];
+  }
+  
+  try {
+    // Filter out providers with missing critical data
+    const validProviders = providers.filter(provider => 
+      provider && 
+      provider.id && 
+      provider.name && 
+      provider.address && 
+      (provider.specialties || provider.type)
+    );
+    
+    if (validProviders.length === 0) {
+      console.warn('No valid providers available for matching');
+      return [];
+    }
+    
+    // Calculate match scores for each provider
+    const providerMatches = validProviders.map(provider => {
+      try {
+        return calculateProviderMatch(provider, patient);
+      } catch (err) {
+        console.error(`Error calculating match for provider ${provider.id}:`, err);
+        // Return a default low-score match if calculation fails
+        return {
+          provider,
+          matchScore: 10, // Low score for providers with errors
+          distance: 999, // High distance (low priority)
+          inNetwork: false,
+          explanation: {
+            distanceScore: 0,
+            insuranceScore: 0,
+            availabilityScore: 0,
+            specialtyScore: 0,
+            ratingScore: 0,
+            reasons: ['Error calculating match score']
+          }
+        };
+      }
+    });
+    
+    // Sort by match score and limit results
+    const sortedMatches = providerMatches
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, limit);
+    
+    return sortedMatches;
+  } catch (err) {
+    console.error('Error in provider matching algorithm:', err);
+    return [];
+  }
 }
