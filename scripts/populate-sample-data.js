@@ -223,6 +223,42 @@ const samplePatients = [
     leakage_risk_score: 25,
     leakage_risk_level: "low",
     referral_status: "completed"
+  },
+  {
+    name: "Josue Villalona",
+    date_of_birth: "1988-03-14",
+    diagnosis: "Minor Laceration Repair",
+    discharge_date: "2025-01-22",
+    required_followup: "Wound Care + Primary Care",
+    insurance: "Blue Cross Blue Shield",
+    address: "892 Washington St, Boston, MA 02118",
+    leakage_risk_score: 18,
+    leakage_risk_level: "low",
+    referral_status: "scheduled"
+  },
+  {
+    name: "Ariel Chen",
+    date_of_birth: "1993-09-07",
+    diagnosis: "Routine Colonoscopy",
+    discharge_date: "2025-01-23",
+    required_followup: "Gastroenterology",
+    insurance: "Harvard Pilgrim",
+    address: "467 Brookline Ave, Brookline, MA 02445",
+    leakage_risk_score: 22,
+    leakage_risk_level: "low",
+    referral_status: "completed"
+  },
+  {
+    name: "Jessenia Cintron",
+    date_of_birth: "1990-12-19",
+    diagnosis: "Tonsillectomy",
+    discharge_date: "2025-01-24",
+    required_followup: "ENT + Primary Care",
+    insurance: "United Healthcare",
+    address: "234 Centre St, Jamaica Plain, MA 02130",
+    leakage_risk_score: 15,
+    leakage_risk_level: "low",
+    referral_status: "completed"
   }
 ];
 
