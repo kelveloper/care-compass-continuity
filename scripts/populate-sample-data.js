@@ -239,9 +239,9 @@ const samplePatients = [
   {
     name: "Ariel Chen",
     date_of_birth: "1993-09-07",
-    diagnosis: "Routine Colonoscopy",
+    diagnosis: "Routine Blood Work",
     discharge_date: "2025-01-23",
-    required_followup: "Gastroenterology",
+    required_followup: "Primary Care",
     insurance: "Harvard Pilgrim",
     address: "467 Brookline Ave, Brookline, MA 02445",
     leakage_risk_score: 22,
