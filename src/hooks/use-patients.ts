@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Patient, PatientFilters } from '@/types';
-import { enhancePatientData } from '@/lib/risk-calculator';
+import { enhancePatientDataSync } from '@/lib/risk-calculator';
 import type { Database } from '@/integrations/supabase/types';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 type DatabasePatient = Database['public']['Tables']['patients']['Row'];
 
@@ -23,7 +23,7 @@ const enhancePatients = (data: DatabasePatient[]): Patient[] => {
     };
 
     // Enhance with computed fields (age, days since discharge, detailed risk factors)
-    return enhancePatientData(patient);
+    return enhancePatientDataSync(patient);
   });
 
   // Sort by leakage risk score (highest risk first) as per requirements
@@ -37,7 +37,12 @@ const enhancePatients = (data: DatabasePatient[]): Patient[] => {
  * @param realtimeEnabled Optional parameter to enable/disable real-time updates
  */
 export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
+  console.log('usePatients: Hook called with filters:', filters, 'realtime:', realtimeEnabled);
+  
   const queryClient = useQueryClient();
+  
+  // Add debounce ref for real-time updates
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Set up real-time subscription
   useEffect(() => {
@@ -58,8 +63,16 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
         async (payload) => {
           console.log('Real-time update received:', payload);
           
-          // Invalidate the patients query to trigger a refetch
-          queryClient.invalidateQueries({ queryKey: ['patients', filters] });
+          // Clear existing timeout if any
+          if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+          }
+          
+          // Add a debounced delay to batch multiple rapid updates
+          debounceTimeoutRef.current = setTimeout(() => {
+            // Invalidate the patients query to trigger a refetch
+            queryClient.invalidateQueries({ queryKey: ['patients', filters] });
+          }, 500); // 500ms delay to batch updates
         }
       )
       .subscribe();
@@ -67,6 +80,9 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
     // Clean up subscription when component unmounts or realtimeEnabled changes
     return () => {
       console.log('Cleaning up real-time subscription for patients');
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
       subscription.unsubscribe();
     };
   }, [queryClient, realtimeEnabled, filters]);
@@ -74,6 +90,7 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
   return useQuery({
     queryKey: ['patients', filters],
     queryFn: async (): Promise<Patient[]> => {
+      console.log('usePatients: Fetching patients with filters:', filters);
       try {
         let query = supabase
           .from('patients')
@@ -81,6 +98,7 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
         
         // Apply filters if provided
         if (filters) {
+          console.log('usePatients: Applying filters:', filters);
           // Filter by risk level
           if (filters.riskLevel) {
             query = query.eq('leakage_risk_level', filters.riskLevel);
@@ -114,14 +132,19 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
         const { data, error } = await query;
 
         if (error) {
+          console.error('usePatients: Database error:', error);
           throw new Error(`Failed to fetch patients: ${error.message}`);
         }
 
         if (!data) {
+          console.log('usePatients: No data returned from database');
           return [];
         }
 
-        return enhancePatients(data);
+        console.log('usePatients: Successfully fetched', data.length, 'patients');
+        const enhancedPatients = enhancePatients(data);
+        console.log('usePatients: Enhanced patients:', enhancedPatients.length);
+        return enhancedPatients;
       } catch (error) {
         // Enhanced error handling with more context
         console.error('Error fetching patients:', error);
@@ -132,10 +155,13 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
         }
       }
     },
-    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
+    staleTime: 30 * 1000, // Consider data fresh for 30 seconds (reduced from 5 minutes)
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
     retry: 3, // Retry failed requests up to 3 times
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+    refetchOnWindowFocus: false, // Prevent refetch when window regains focus
+    refetchOnMount: false, // Only refetch if data is stale
+    placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
   });
 }
 
@@ -190,6 +216,8 @@ export function usePatientsTyped(filters?: PatientFilters, realtimeEnabled = tru
  * Now with real-time updates
  */
 export function usePatient(patientId: string | undefined) {
+  console.log('usePatient: Hook called with patientId:', patientId);
+  
   const queryClient = useQueryClient();
   
   // Set up real-time subscription for a specific patient
@@ -225,9 +253,11 @@ export function usePatient(patientId: string | undefined) {
     queryKey: ['patient', patientId],
     queryFn: async (): Promise<Patient | null> => {
       if (!patientId) {
+        console.log('usePatient: No patientId provided, returning null');
         return null;
       }
 
+      console.log('usePatient: Fetching patient with ID:', patientId);
       try {
         const { data, error } = await supabase
           .from('patients')
@@ -236,6 +266,7 @@ export function usePatient(patientId: string | undefined) {
           .single();
 
         if (error) {
+          console.error('usePatient: Database error:', error);
           // Handle "not found" errors gracefully
           if (error.code === 'PGRST116') {
             throw new Error(`Patient with ID ${patientId} not found`);
@@ -244,8 +275,11 @@ export function usePatient(patientId: string | undefined) {
         }
 
         if (!data) {
+          console.log('usePatient: No data returned for patient:', patientId);
           return null;
         }
+
+        console.log('usePatient: Successfully fetched patient:', data.id, data.name);
 
         // Transform database patient to enhanced Patient object with risk calculations
         const patient: Patient = {
@@ -257,7 +291,7 @@ export function usePatient(patientId: string | undefined) {
         };
 
         // Enhance with computed fields (age, days since discharge, detailed risk factors)
-        return enhancePatientData(patient);
+        return enhancePatientDataSync(patient);
       } catch (error) {
         // Enhanced error handling with more context
         console.error(`Error fetching patient ${patientId}:`, error);
@@ -273,7 +307,7 @@ export function usePatient(patientId: string | undefined) {
       }
     },
     enabled: !!patientId, // Only run query if patientId is provided
-    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
+    staleTime: 30 * 1000, // Consider data fresh for 30 seconds
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
     retry: (failureCount, error) => {
       // Don't retry for "not found" errors
@@ -284,6 +318,8 @@ export function usePatient(patientId: string | undefined) {
       return failureCount < 3;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+    refetchOnWindowFocus: false, // Prevent refetch when window regains focus
+    placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
   });
 }
 

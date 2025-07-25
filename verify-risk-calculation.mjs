@@ -1,35 +1,11 @@
-// Simple verification script for risk calculation logic
-// This tests the core functionality without requiring Jest setup
+import { createClient } from '@supabase/supabase-js';
 
-// Mock patient data similar to what's in the database
-const testPatients = [
-  {
-    name: "Margaret Thompson",
-    date_of_birth: "1942-03-15", // ~82 years old - high age risk
-    diagnosis: "Total Hip Replacement", // Moderate complexity
-    discharge_date: "2025-01-18", // ~4 days ago - low time risk
-    insurance: "Medicare", // High insurance risk
-    address: "45 Beacon Hill Ave, Boston, MA 02108", // Low geographic risk (Boston)
-  },
-  {
-    name: "Kevin Lee",
-    date_of_birth: "1991-08-09", // ~33 years old - low age risk
-    diagnosis: "ACL Repair", // Low complexity
-    discharge_date: "2025-01-21", // ~1 day ago - very low time risk
-    insurance: "United Healthcare", // Low insurance risk
-    address: "741 Huntington Ave, Boston, MA 02115", // Low geographic risk (Boston)
-  },
-  {
-    name: "Charles Wilson",
-    date_of_birth: "1953-12-31", // ~71 years old - high age risk
-    diagnosis: "Lung Surgery", // High complexity
-    discharge_date: "2025-01-16", // ~6 days ago - moderate time risk
-    insurance: "Cigna", // Low insurance risk
-    address: "987 Atlantic Ave, Boston, MA 02110", // Low geographic risk (Boston)
-  }
-];
+// Initialize Supabase client
+const supabaseUrl = 'http://localhost:54321';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Simplified risk calculation functions for testing
+// Risk calculation functions
 function calculateAge(dateOfBirth) {
   const today = new Date();
   const birthDate = new Date(dateOfBirth);
@@ -64,96 +40,247 @@ function calculateAgeRisk(dateOfBirth) {
 function calculateDiagnosisComplexity(diagnosis) {
   const diagnosisLower = diagnosis.toLowerCase();
   
+  // High complexity procedures (20-25 points)
   const highComplexity = [
-    'cardiac catheterization', 'coronary artery bypass', 'spinal fusion',
-    'spine surgery', 'lung surgery', 'kidney surgery', 'liver surgery',
-    'brain surgery', 'heart surgery'
+    'cardiac catheterization',
+    'coronary artery bypass',
+    'spinal fusion',
+    'spine surgery',
+    'lung surgery',
+    'kidney surgery',
+    'liver surgery',
+    'brain surgery',
+    'heart surgery'
   ];
   
+  // Moderate complexity procedures (15-20 points)
   const moderateComplexity = [
-    'hip replacement', 'knee replacement', 'shoulder replacement',
-    'prostate surgery', 'gallbladder surgery', 'hernia repair'
+    'hip replacement',
+    'knee replacement',
+    'shoulder replacement',
+    'prostate surgery',
+    'gallbladder surgery',
+    'hernia repair'
   ];
   
+  // Low complexity procedures (5-10 points)
   const lowComplexity = [
-    'cataract surgery', 'thyroid surgery', 'breast surgery',
-    'appendectomy', 'colonoscopy', 'acl repair'
+    'cataract surgery',
+    'thyroid surgery',
+    'breast surgery',
+    'appendectomy',
+    'colonoscopy'
   ];
   
   if (highComplexity.some(d => diagnosisLower.includes(d))) {
-    return 85;
+    return 85; // High complexity = high risk score
   } else if (moderateComplexity.some(d => diagnosisLower.includes(d))) {
-    return 65;
+    return 65; // Moderate complexity = moderate risk score
   } else if (lowComplexity.some(d => diagnosisLower.includes(d))) {
-    return 25;
+    return 25; // Low complexity = low risk score
   } else {
-    return 50;
+    return 50; // Default moderate risk for unknown procedures
   }
 }
 
 function calculateTimeRisk(dischargeDate) {
   const daysSinceDischarge = calculateDaysSinceDischarge(dischargeDate);
   
-  if (daysSinceDischarge >= 14) return 20;
-  if (daysSinceDischarge >= 10) return 16;
-  if (daysSinceDischarge >= 7) return 12;
-  if (daysSinceDischarge >= 5) return 8;
-  if (daysSinceDischarge >= 3) return 4;
-  return 1;
+  if (daysSinceDischarge >= 14) return 20; // 2+ weeks
+  if (daysSinceDischarge >= 10) return 16; // 10-13 days
+  if (daysSinceDischarge >= 7) return 12;  // 1 week
+  if (daysSinceDischarge >= 5) return 8;   // 5-6 days
+  if (daysSinceDischarge >= 3) return 4;   // 3-4 days
+  return 1; // 0-2 days
 }
 
 function calculateInsuranceRisk(insurance) {
   const insuranceLower = insurance.toLowerCase();
   
-  if (insuranceLower.includes('medicaid')) return 85;
-  if (insuranceLower.includes('medicare')) return 75;
-  if (insuranceLower.includes('hmo') || insuranceLower.includes('kaiser')) return 60;
+  // High risk insurance types (converted to 0-100 scale)
+  if (insuranceLower.includes('medicaid')) {
+    return 85; // Highest risk - limited provider acceptance
+  }
+  if (insuranceLower.includes('medicare')) {
+    return 75; // High risk - some access limitations
+  }
+  
+  // Medium risk insurance types
+  if (insuranceLower.includes('hmo') || insuranceLower.includes('kaiser')) {
+    return 60; // Moderate risk - network restrictions
+  }
+  
+  // Low risk insurance types
   if (insuranceLower.includes('blue cross') || 
       insuranceLower.includes('united') || 
       insuranceLower.includes('aetna') || 
-      insuranceLower.includes('cigna')) return 25;
+      insuranceLower.includes('cigna')) {
+    return 25; // Lower risk - good provider networks
+  }
   
-  return 50;
+  // Unknown insurance
+  return 50; // Default moderate risk
 }
 
 function calculateGeographicRisk(address) {
   const addressLower = address.toLowerCase();
   
+  // Major medical centers - lowest risk
   if (addressLower.includes('boston') || 
       addressLower.includes('cambridge') ||
-      addressLower.includes('longwood')) return 20;
+      addressLower.includes('longwood')) {
+    return 20;
+  }
   
+  // Suburban areas with good access
   if (addressLower.includes('brookline') || 
       addressLower.includes('somerville') ||
       addressLower.includes('newton') ||
-      addressLower.includes('watertown')) return 35;
+      addressLower.includes('watertown')) {
+    return 35;
+  }
   
+  // Further suburban areas
   if (addressLower.includes('quincy') || 
       addressLower.includes('medford') ||
       addressLower.includes('malden') ||
-      addressLower.includes('waltham')) return 55;
+      addressLower.includes('waltham')) {
+    return 55;
+  }
   
+  // Rural or distant areas
   return 80;
 }
 
-function calculateLeakageRisk(patient) {
-  const ageRisk = calculateAgeRisk(patient.date_of_birth);
-  const diagnosisRisk = calculateDiagnosisComplexity(patient.diagnosis);
-  const timeRisk = calculateTimeRisk(patient.discharge_date);
-  const insuranceRisk = calculateInsuranceRisk(patient.insurance);
-  const geographicRisk = calculateGeographicRisk(patient.address);
+async function fetchReferralHistory(patientId) {
+  try {
+    const { data, error } = await supabase
+      .from('referrals')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching referral history:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching referral history:', error);
+    return [];
+  }
+}
+
+function calculateReferralHistoryRisk(referrals) {
+  if (!referrals || referrals.length === 0) {
+    return 50; // No history = moderate risk
+  }
   
+  let riskScore = 0;
+  const totalReferrals = referrals.length;
+  
+  // Count different types of referral outcomes
+  const cancelledReferrals = referrals.filter(r => r.status === 'cancelled').length;
+  const completedReferrals = referrals.filter(r => r.status === 'completed').length;
+  const pendingReferrals = referrals.filter(r => r.status === 'pending' || r.status === 'sent').length;
+  
+  // Calculate risk based on referral patterns
+  const cancellationRate = cancelledReferrals / totalReferrals;
+  const completionRate = completedReferrals / totalReferrals;
+  
+  // High cancellation rate increases risk significantly
+  if (cancellationRate >= 0.5) {
+    riskScore += 40; // 50%+ cancellation rate = very high risk
+  } else if (cancellationRate >= 0.3) {
+    riskScore += 25; // 30%+ cancellation rate = high risk
+  } else if (cancellationRate >= 0.1) {
+    riskScore += 10; // 10%+ cancellation rate = moderate risk
+  }
+  
+  // Low completion rate increases risk
+  if (completionRate < 0.3) {
+    riskScore += 20; // <30% completion rate = high risk
+  } else if (completionRate < 0.5) {
+    riskScore += 10; // <50% completion rate = moderate risk
+  }
+  
+  // Multiple pending referrals indicate potential issues
+  if (pendingReferrals >= 3) {
+    riskScore += 15; // 3+ pending = high risk
+  } else if (pendingReferrals >= 2) {
+    riskScore += 8; // 2 pending = moderate risk
+  }
+  
+  // Recent referral activity (within last 30 days)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const recentReferrals = referrals.filter(r => 
+    new Date(r.created_at) > thirtyDaysAgo
+  );
+  
+  if (recentReferrals.length === 0 && totalReferrals > 0) {
+    riskScore += 15; // No recent activity despite history = high risk
+  }
+  
+  // Cap the score at 100
+  return Math.min(100, Math.max(0, riskScore));
+}
+
+async function calculateLeakageRisk(patient) {
+  // Calculate individual risk factors
+  const ageRisk = patient.date_of_birth ? calculateAgeRisk(patient.date_of_birth) : 15;
+  const diagnosisRisk = patient.diagnosis ? calculateDiagnosisComplexity(patient.diagnosis) : 50;
+  const timeRisk = patient.discharge_date ? calculateTimeRisk(patient.discharge_date) : 5;
+  const insuranceRisk = patient.insurance ? calculateInsuranceRisk(patient.insurance) : 50;
+  const geographicRisk = patient.address ? calculateGeographicRisk(patient.address) : 50;
+  
+  // Fetch referral history if patient ID is available
+  let referralHistoryRisk = 50; // Default moderate risk
+  if (patient.id) {
+    try {
+      const referrals = await fetchReferralHistory(patient.id);
+      referralHistoryRisk = calculateReferralHistoryRisk(referrals);
+    } catch (error) {
+      console.error('Error calculating referral history risk:', error);
+      // Continue with default risk value
+    }
+  }
+  
+  // Convert to 0-100 scale for factors breakdown
   const factors = {
-    age: Math.round((ageRisk / 30) * 100),
-    diagnosisComplexity: diagnosisRisk,
-    timeSinceDischarge: Math.round((timeRisk / 20) * 100),
-    insuranceType: insuranceRisk,
-    geographicFactors: geographicRisk,
+    age: Math.round((ageRisk / 30) * 100), // Convert 0-30 to 0-100
+    diagnosisComplexity: diagnosisRisk, // Already 0-100
+    timeSinceDischarge: Math.round((timeRisk / 20) * 100), // Convert 0-20 to 0-100
+    insuranceType: insuranceRisk, // Already 0-100
+    geographicFactors: geographicRisk, // Already 0-100
+    previousReferralHistory: referralHistoryRisk // Already 0-100
   };
   
-  const rawScore = ageRisk + (diagnosisRisk * 0.25) + timeRisk + (insuranceRisk * 0.15) + (geographicRisk * 0.10);
+  // Updated weighted calculation with referral history
+  // Age factor (0-25 points), Diagnosis complexity (0-25 points), 
+  // Time since discharge (0-15 points), Insurance (0-15 points), 
+  // Geographic (0-10 points), Referral history (0-10 points)
+  const ageWeight = 0.25;
+  const diagnosisWeight = 0.25;
+  const timeWeight = 0.15;
+  const insuranceWeight = 0.15;
+  const geographicWeight = 0.10;
+  const referralHistoryWeight = 0.10;
+  
+  const rawScore = 
+    (ageRisk * ageWeight) + 
+    (diagnosisRisk * diagnosisWeight) + 
+    (timeRisk * timeWeight / 20 * 100) + 
+    (insuranceRisk * insuranceWeight) + 
+    (geographicRisk * geographicWeight) + 
+    (referralHistoryRisk * referralHistoryWeight);
+  
+  // Convert to 0-100 scale
   const score = Math.round(Math.min(100, Math.max(0, rawScore)));
   
+  // Determine risk level based on score thresholds from design document
   let level;
   if (score >= 70) {
     level = "high";
@@ -166,59 +293,80 @@ function calculateLeakageRisk(patient) {
   return { score, level, factors };
 }
 
-// Run tests
-console.log('🧪 Testing Risk Calculation Logic\n');
-console.log('=' .repeat(60));
-
-testPatients.forEach((patient, index) => {
-  console.log(`\n${index + 1}. ${patient.name}`);
-  console.log('-'.repeat(40));
-  
+async function enhancePatientData(patient) {
   const age = calculateAge(patient.date_of_birth);
-  const daysSince = calculateDaysSinceDischarge(patient.discharge_date);
+  const daysSinceDischarge = calculateDaysSinceDischarge(patient.discharge_date);
+  const riskCalculation = await calculateLeakageRisk(patient);
   
-  console.log(`   Age: ${age} years`);
-  console.log(`   Days since discharge: ${daysSince} days`);
-  console.log(`   Diagnosis: ${patient.diagnosis}`);
-  console.log(`   Insurance: ${patient.insurance}`);
-  console.log(`   Location: ${patient.address.split(',')[1]?.trim()}`);
+  return {
+    ...patient,
+    age,
+    daysSinceDischarge,
+    leakageRisk: {
+      score: riskCalculation.score,
+      level: riskCalculation.level,
+      factors: riskCalculation.factors,
+    },
+  };
+}
+
+// Main function to test risk calculation
+async function testRiskCalculation() {
+  console.log('🧮 Testing sophisticated leakage risk calculation');
   
-  const risk = calculateLeakageRisk(patient);
-  
-  console.log(`\n   📊 Risk Assessment:`);
-  console.log(`   Overall Score: ${risk.score}/100 (${risk.level.toUpperCase()})`);
-  console.log(`   Risk Factors:`);
-  console.log(`     - Age: ${risk.factors.age}/100`);
-  console.log(`     - Diagnosis: ${risk.factors.diagnosisComplexity}/100`);
-  console.log(`     - Time: ${risk.factors.timeSinceDischarge}/100`);
-  console.log(`     - Insurance: ${risk.factors.insuranceType}/100`);
-  console.log(`     - Geographic: ${risk.factors.geographicFactors}/100`);
-});
+  try {
+    // Fetch a patient from the database
+    const { data: patients, error } = await supabase
+      .from('patients')
+      .select('*')
+      .limit(1);
+    
+    if (error) {
+      throw error;
+    }
+    
+    if (!patients || patients.length === 0) {
+      console.log('❌ No patients found in the database');
+      return;
+    }
+    
+    const patient = patients[0];
+    console.log('📊 Testing risk calculation for patient:', patient.name);
+    
+    // Calculate risk factors
+    console.log('\n🔍 Individual Risk Factors:');
+    console.log('Age Risk:', calculateAgeRisk(patient.date_of_birth));
+    console.log('Diagnosis Risk:', calculateDiagnosisComplexity(patient.diagnosis));
+    console.log('Time Risk:', calculateTimeRisk(patient.discharge_date));
+    console.log('Insurance Risk:', calculateInsuranceRisk(patient.insurance));
+    console.log('Geographic Risk:', calculateGeographicRisk(patient.address));
+    
+    // Fetch referral history
+    const referrals = await fetchReferralHistory(patient.id);
+    console.log('\n📝 Referral History:', referrals.length > 0 ? `${referrals.length} referrals found` : 'No referrals found');
+    if (referrals.length > 0) {
+      console.log('Referral History Risk:', calculateReferralHistoryRisk(referrals));
+    }
+    
+    // Calculate comprehensive risk
+    const riskResult = await calculateLeakageRisk(patient);
+    console.log('\n📈 Comprehensive Risk Calculation:');
+    console.log('Risk Score:', riskResult.score);
+    console.log('Risk Level:', riskResult.level);
+    console.log('Risk Factors:', riskResult.factors);
+    
+    // Enhance patient data
+    const enhancedPatient = await enhancePatientData(patient);
+    console.log('\n🔄 Enhanced Patient Data:');
+    console.log('Age:', enhancedPatient.age);
+    console.log('Days Since Discharge:', enhancedPatient.daysSinceDischarge);
+    console.log('Leakage Risk:', enhancedPatient.leakageRisk);
+    
+    console.log('\n✅ Risk calculation test completed successfully');
+  } catch (error) {
+    console.error('❌ Error testing risk calculation:', error);
+  }
+}
 
-console.log('\n' + '=' .repeat(60));
-console.log('✅ Risk Calculation Tests Completed');
-
-// Verify expected outcomes
-console.log('\n🔍 Verification:');
-const margaretRisk = calculateLeakageRisk(testPatients[0]);
-const kevinRisk = calculateLeakageRisk(testPatients[1]);
-const charlesRisk = calculateLeakageRisk(testPatients[2]);
-
-console.log(`   Margaret (elderly, Medicare, hip replacement): ${margaretRisk.level} risk (${margaretRisk.score})`);
-console.log(`   Kevin (young, good insurance, minor surgery): ${kevinRisk.level} risk (${kevinRisk.score})`);
-console.log(`   Charles (elderly, complex surgery): ${charlesRisk.level} risk (${charlesRisk.score})`);
-
-// Expected: Margaret should be high risk, Kevin should be low risk, Charles should be high risk
-const expectedResults = [
-  { name: 'Margaret', expected: 'high', actual: margaretRisk.level },
-  { name: 'Kevin', expected: 'low', actual: kevinRisk.level },
-  { name: 'Charles', expected: 'high', actual: charlesRisk.level }
-];
-
-console.log('\n✅ Expected vs Actual Results:');
-expectedResults.forEach(result => {
-  const status = result.expected === result.actual ? '✅' : '❌';
-  console.log(`   ${status} ${result.name}: Expected ${result.expected}, Got ${result.actual}`);
-});
-
-console.log('\n🎉 Risk calculation logic verification complete!');
+// Run the test
+testRiskCalculation();

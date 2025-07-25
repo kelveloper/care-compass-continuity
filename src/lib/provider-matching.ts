@@ -58,13 +58,22 @@ export function getApproximateCoordinates(address: string): { lat: number; lng: 
  * @returns boolean indicating if the provider is in-network
  */
 export function isInNetwork(provider: Provider, patientInsurance: string): boolean {
-  if (!patientInsurance || !provider.in_network_plans || provider.in_network_plans.length === 0) {
+  if (!patientInsurance) {
+    return false;
+  }
+  
+  // Check both in_network_plans and accepted_insurance for compatibility
+  const networkPlans = provider.in_network_plans || [];
+  const acceptedInsurance = provider.accepted_insurance || [];
+  
+  if (networkPlans.length === 0 && acceptedInsurance.length === 0) {
     return false;
   }
   
   const patientInsuranceLower = patientInsurance.toLowerCase();
   
-  return provider.in_network_plans.some(plan => {
+  // Check in_network_plans first (primary field in database)
+  const inNetworkMatch = networkPlans.some(plan => {
     const planLower = plan.toLowerCase();
     
     // Exact match
@@ -76,6 +85,24 @@ export function isInNetwork(provider: Provider, patientInsurance: string): boole
     // or if the patient's insurance contains the plan name
     return planLower.includes(patientInsuranceLower) || 
            patientInsuranceLower.includes(planLower);
+  });
+  
+  if (inNetworkMatch) {
+    return true;
+  }
+  
+  // Fallback to accepted_insurance for backward compatibility
+  return acceptedInsurance.some(insurance => {
+    const insuranceLower = insurance.toLowerCase();
+    
+    // Exact match
+    if (insuranceLower === patientInsuranceLower) {
+      return true;
+    }
+    
+    // Partial match
+    return insuranceLower.includes(patientInsuranceLower) || 
+           patientInsuranceLower.includes(insuranceLower);
   });
 }
 
@@ -398,16 +425,70 @@ export function calculateProviderMatch(
 
 /**
  * Find and rank providers for a patient
+ * Enhanced to handle real data with proper error handling and validation
  */
 export function findMatchingProviders(
   providers: Provider[],
   patient: Patient,
   limit: number = 5
 ): ProviderMatch[] {
-  const matches = providers
-    .map(provider => calculateProviderMatch(provider, patient))
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, limit);
+  if (!Array.isArray(providers) || providers.length === 0) {
+    console.warn('No providers available for matching');
+    return [];
+  }
   
-  return matches;
+  if (!patient || !patient.address || !patient.insurance || !patient.required_followup) {
+    console.warn('Patient data incomplete for matching');
+    return [];
+  }
+  
+  try {
+    // Filter out providers with missing critical data
+    const validProviders = providers.filter(provider => 
+      provider && 
+      provider.id && 
+      provider.name && 
+      provider.address && 
+      (provider.specialties || provider.type)
+    );
+    
+    if (validProviders.length === 0) {
+      console.warn('No valid providers available for matching');
+      return [];
+    }
+    
+    // Calculate match scores for each provider
+    const providerMatches = validProviders.map(provider => {
+      try {
+        return calculateProviderMatch(provider, patient);
+      } catch (err) {
+        console.error(`Error calculating match for provider ${provider.id}:`, err);
+        // Return a default low-score match if calculation fails
+        return {
+          provider,
+          matchScore: 10, // Low score for providers with errors
+          distance: 999, // High distance (low priority)
+          inNetwork: false,
+          explanation: {
+            distanceScore: 0,
+            insuranceScore: 0,
+            availabilityScore: 0,
+            specialtyScore: 0,
+            ratingScore: 0,
+            reasons: ['Error calculating match score']
+          }
+        };
+      }
+    });
+    
+    // Sort by match score and limit results
+    const sortedMatches = providerMatches
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, limit);
+    
+    return sortedMatches;
+  } catch (err) {
+    console.error('Error in provider matching algorithm:', err);
+    return [];
+  }
 }

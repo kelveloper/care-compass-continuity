@@ -1,4 +1,4 @@
-import { Patient as DBPatient, Provider as DBProvider } from "@/integrations/supabase/types";
+import { Patient as DBPatient, Provider as DBProvider, PatientUpdate as DBPatientUpdate } from "@/integrations/supabase/types";
 
 // Enhanced Patient interface with computed fields for frontend
 export interface Patient extends DBPatient {
@@ -12,10 +12,14 @@ export interface Patient extends DBPatient {
   };
 }
 
+// Patient update interface for editing
+export interface PatientUpdate extends DBPatientUpdate {}
+
 // Enhanced Provider interface with computed fields for frontend
 export interface Provider extends DBProvider {
   // Computed fields for matching
-  distance?: string;
+  distance?: number;
+  distanceText?: string; // Text representation of distance (e.g. "5 miles")
   matchScore?: number;
   inNetwork?: boolean;
   specialtyMatch?: boolean;
@@ -75,8 +79,8 @@ export interface ProvidersResponse {
   count: number;
   error?: string;
 }
-// Searc
-h and filter types
+
+// Search and filter types
 export interface PatientFilters {
   riskLevel?: "low" | "medium" | "high";
   referralStatus?: "needed" | "sent" | "scheduled" | "completed";

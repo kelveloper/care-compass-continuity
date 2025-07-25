@@ -112,17 +112,17 @@
 
 #### Task 3.2: Patient Detail View Updates
 
-- [ ] Replace mock data with `usePatient` hook
-- [ ] Connect provider matching to real database
-- [ ] Implement referral status updates
-- [ ] Add patient information editing capability
+- [x] Replace mock data with `usePatient` hook
+- [x] Connect provider matching to real database
+- [x] Implement referral status updates
+- [x] Add patient information editing capability
 
 #### Task 3.3: Provider Matching Enhancement
 
-- [ ] Connect ProviderMatchCards to real provider data
-- [ ] Implement distance calculation using coordinates
-- [ ] Add insurance verification logic
-- [ ] Enhance matching algorithm with real data
+- [x] Connect ProviderMatchCards to real provider data
+- [x] Implement distance calculation using coordinates
+- [x] Add insurance verification logic
+- [x] Enhance matching algorithm with real data
 
 ### Phase 4: Core Features & Business Logic (Day 4-5)
 
@@ -130,14 +130,14 @@
 
 #### Task 4.1: Risk Score Algorithm
 
-- [ ] Implement sophisticated leakage risk calculation:
+- [x] Implement sophisticated leakage risk calculation:
   - Age factor (older patients = higher risk)
   - Diagnosis complexity
   - Time since discharge
   - Insurance type
   - Geographic factors
   - Previous referral history
-- [ ] Create risk score explanation component
+- [x] Create risk score explanation component
 
 #### Task 4.2: Smart Provider Matching
 

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Care Compass Debug Page</h1>
+    
+    <div id="results">
+        <div class="status">Loading diagnostic tests...</div>
+    </div>
+
+    <script>
+        const results = document.getElementById('results');
+        
+        function addResult(message, isSuccess = true) {
+            const div = document.createElement('div');
+            div.className = `status ${isSuccess ? 'success' : 'error'}`;
+            div.textContent = message;
+            results.appendChild(div);
+        }
+        
+        // Clear loading message
+        results.innerHTML = '';
+        
+        // Test 1: Basic JavaScript
+        try {
+            addResult('✓ JavaScript is working');
+        } catch (e) {
+            addResult('✗ JavaScript error: ' + e.message, false);
+        }
+        
+        // Test 2: Fetch API
+        fetch('/vite.config.ts')
+            .then(response => {
+                if (response.ok) {
+                    addResult('✓ Server is responding to file requests');
+                } else {
+                    addResult('✗ Server returned status: ' + response.status, false);
+                }
+            })
+            .catch(error => {
+                addResult('✗ Fetch error: ' + error.message, false);
+            });
+        
+        // Test 3: Main app endpoint
+        fetch('/')
+            .then(response => {
+                if (response.ok) {
+                    addResult('✓ Main app endpoint is accessible');
+                    return response.text();
+                } else {
+                    addResult('✗ Main app returned status: ' + response.status, false);
+                }
+            })
+            .then(html => {
+                if (html && html.includes('root')) {
+                    addResult('✓ Main app HTML contains root element');
+                } else {
+                    addResult('✗ Main app HTML missing root element', false);
+                }
+            })
+            .catch(error => {
+                addResult('✗ Main app fetch error: ' + error.message, false);
+            });
+        
+        // Test 4: Module loading
+        setTimeout(() => {
+            try {
+                // Try to load a module
+                import('/src/main.tsx').then(() => {
+                    addResult('✓ ES modules are loading correctly');
+                }).catch(error => {
+                    addResult('✗ Module loading error: ' + error.message, false);
+                });
+            } catch (error) {
+                addResult('✗ Import error: ' + error.message, false);
+            }
+        }, 1000);
+        
+        // Add a link back to main app
+        setTimeout(() => {
+            const link = document.createElement('div');
+            link.innerHTML = '<br><a href="/" style="color: #007bff; text-decoration: none;">← Back to Main App</a>';
+            results.appendChild(link);
+        }, 2000);
+    </script>
+</body>
+</html>
