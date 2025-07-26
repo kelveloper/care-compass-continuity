@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserCircle, Clock, AlertCircle, CheckCircle2, Loader2, RefreshCw, Search, Filter, Wifi, X } from "lucide-react";
 import { PatientDetailContainer } from "./PatientDetailContainer";
+import { NotificationCenter } from "./NotificationCenter";
 import { usePatients } from "@/hooks/use-patients";
 import { Patient, PatientFilters } from "@/types";
 import { Input } from "@/components/ui/input";
@@ -164,6 +165,7 @@ export const Dashboard = () => {
               <p className="text-muted-foreground">Care Coordination Dashboard</p>
             </div>
             <div className="flex items-center gap-3">
+              <NotificationCenter />
               <UserCircle className="h-8 w-8 text-muted-foreground" />
               <div className="text-right">
                 <p className="font-medium text-foreground">Brenda Chen, RN</p>

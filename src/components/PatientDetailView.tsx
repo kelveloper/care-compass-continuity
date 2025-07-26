@@ -8,10 +8,13 @@ import {
   ReferralManagement,
   RiskAnalysisCard,
   ReferralStatusTimeline,
+  ReferralNotifications,
+  ReferralConfirmationTracker,
   LoadingSkeleton,
   ErrorState,
 } from "./PatientDetail";
 import { useReferrals } from "@/hooks/use-referrals-safe";
+import { useReferralNotifications } from "./PatientDetail/ReferralNotifications";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Patient, Provider, ReferralStatus } from "@/types";
@@ -36,6 +39,12 @@ export const PatientDetailView = ({
   );
   const [history, setHistory] = useState<any[]>([]);
   const { toast } = useToast();
+  const { 
+    notifications, 
+    addNotification, 
+    markAsRead, 
+    dismissAll 
+  } = useReferralNotifications();
 
   const {
     isLoading,
@@ -237,6 +246,16 @@ export const PatientDetailView = ({
         const historyData = await getReferralHistory(newReferral.id);
         setHistory(historyData);
 
+        // Add notification
+        addNotification({
+          type: "confirmation",
+          title: "Referral Sent Successfully",
+          message: `Referral has been sent to ${selectedProvider.name}. The provider will be notified.`,
+          priority: "high",
+          referralId: newReferral.id,
+          actionRequired: false,
+        });
+
         toast({
           title: "Referral Sent",
           description: `Referral sent to ${selectedProvider.name}`,
@@ -277,6 +296,16 @@ export const PatientDetailView = ({
       // Fetch the updated history
       const historyData = await getReferralHistory(activeReferral.id);
       setHistory(historyData);
+
+      // Add notification
+      addNotification({
+        type: "status_change",
+        title: "Appointment Scheduled",
+        message: `Appointment has been scheduled for ${tomorrow.toLocaleDateString()}.`,
+        priority: "high",
+        referralId: activeReferral.id,
+        actionRequired: false,
+      });
     }
   };
 
@@ -299,6 +328,16 @@ export const PatientDetailView = ({
       // Fetch the updated history
       const historyData = await getReferralHistory(activeReferral.id);
       setHistory(historyData);
+
+      // Add notification
+      addNotification({
+        type: "status_change",
+        title: "Care Completed",
+        message: "Patient care has been completed successfully. Referral workflow is finished.",
+        priority: "high",
+        referralId: activeReferral.id,
+        actionRequired: false,
+      });
     }
   };
 
@@ -315,6 +354,16 @@ export const PatientDetailView = ({
       const historyData = await getReferralHistory(activeReferral.id);
       setHistory(historyData);
       
+      // Add notification
+      addNotification({
+        type: "status_change",
+        title: "Referral Cancelled",
+        message: "The referral has been cancelled. You can select a new provider if needed.",
+        priority: "medium",
+        referralId: activeReferral.id,
+        actionRequired: false,
+      });
+      
       // Reset the active referral and selected provider
       setActiveReferral(null);
       setSelectedProvider(null);
@@ -329,6 +378,25 @@ export const PatientDetailView = ({
         // Fetch the updated history
         const historyData = await getReferralHistory(referral.id);
         setHistory(historyData);
+      }
+    }
+  };
+
+  const handleRefreshTimeline = async () => {
+    if (activeReferral?.id) {
+      try {
+        const historyData = await getReferralHistory(activeReferral.id);
+        setHistory(historyData);
+        toast({
+          title: "Timeline Refreshed",
+          description: "Referral timeline has been updated with the latest information.",
+        });
+      } catch (error) {
+        toast({
+          title: "Refresh Failed",
+          description: "Failed to refresh the timeline. Please try again.",
+          variant: "destructive",
+        });
       }
     }
   };
@@ -426,6 +494,23 @@ export const PatientDetailView = ({
               />
             )}
 
+            <ReferralNotifications
+              activeReferral={activeReferral}
+              onMarkAsRead={markAsRead}
+              onDismissAll={dismissAll}
+            />
+
+            <ReferralConfirmationTracker
+              activeReferral={activeReferral}
+              selectedProvider={selectedProvider}
+              onRetryConfirmation={handleRetryLoad}
+              onContactProvider={() => {
+                if (selectedProvider?.phone) {
+                  window.open(`tel:${selectedProvider.phone}`);
+                }
+              }}
+            />
+
             <RiskAnalysisCard patient={patient} />
 
             <ReferralStatusTimeline
@@ -434,6 +519,7 @@ export const PatientDetailView = ({
               isLoading={isLoading}
               error={error}
               history={history}
+              onRefresh={handleRefreshTimeline}
             />
           </div>
         </div>
