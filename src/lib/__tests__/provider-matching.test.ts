@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@jest/globals';
 import {
   calculateDistance,
   getApproximateCoordinates,
@@ -7,7 +7,10 @@ import {
   calculateAvailabilityScore,
   calculateProximityScore,
   calculateProviderMatch,
-  findMatchingProviders
+  findMatchingProviders,
+  SCORING_WEIGHTS,
+  getScoringAlgorithmExplanation,
+  generateProviderRecommendationExplanation
 } from '../provider-matching';
 import { Provider, Patient } from '@/types';
 
@@ -24,6 +27,7 @@ const mockPatient: Patient = {
   leakage_risk_score: 75,
   leakage_risk_level: 'high',
   referral_status: 'needed',
+  current_referral_id: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
   leakageRisk: {
@@ -165,6 +169,105 @@ describe('Provider Matching Functions', () => {
     });
   });
 
+  describe('Multi-factor scoring algorithm', () => {
+    it('should have correct scoring weights that sum to 1.0', () => {
+      const totalWeight = Object.values(SCORING_WEIGHTS).reduce((sum, weight) => sum + weight, 0);
+      expect(totalWeight).toBe(1.0);
+    });
+
+    it('should prioritize insurance network match (30% weight)', () => {
+      expect(SCORING_WEIGHTS.insurance).toBe(0.30);
+    });
+
+    it('should weight distance appropriately (25% weight)', () => {
+      expect(SCORING_WEIGHTS.distance).toBe(0.25);
+    });
+
+    it('should weight specialty match appropriately (20% weight)', () => {
+      expect(SCORING_WEIGHTS.specialty).toBe(0.20);
+    });
+
+    it('should weight availability appropriately (15% weight)', () => {
+      expect(SCORING_WEIGHTS.availability).toBe(0.15);
+    });
+
+    it('should weight provider rating appropriately (10% weight)', () => {
+      expect(SCORING_WEIGHTS.rating).toBe(0.10);
+    });
+
+    it('should provide detailed scoring algorithm explanation', () => {
+      const explanation = getScoringAlgorithmExplanation();
+      
+      expect(explanation.description).toContain('Multi-factor');
+      expect(explanation.factors).toHaveLength(5);
+      expect(explanation.totalWeight).toBe(1.0);
+      expect(explanation.scoreRange).toContain('0-100');
+      
+      // Check that all factors are explained
+      const factorNames = explanation.factors.map(f => f.name);
+      expect(factorNames).toContain('Insurance Network Match');
+      expect(factorNames).toContain('Geographic Distance');
+      expect(factorNames).toContain('Specialty Match');
+      expect(factorNames).toContain('Availability');
+      expect(factorNames).toContain('Provider Rating');
+    });
+  });
+
+  describe('calculateProviderMatch with enhanced scoring', () => {
+    it('should heavily favor in-network providers', () => {
+      // Create two identical providers except for insurance
+      const inNetworkProvider = { ...mockProviders[0] };
+      const outOfNetworkProvider = { 
+        ...mockProviders[0], 
+        id: '999',
+        in_network_plans: ['Different Insurance'],
+        accepted_insurance: ['Different Insurance']
+      };
+      
+      const inNetworkMatch = calculateProviderMatch(inNetworkProvider, mockPatient);
+      const outOfNetworkMatch = calculateProviderMatch(outOfNetworkProvider, mockPatient);
+      
+      // In-network should score significantly higher
+      expect(inNetworkMatch.matchScore).toBeGreaterThan(outOfNetworkMatch.matchScore);
+      expect(inNetworkMatch.inNetwork).toBe(true);
+      expect(outOfNetworkMatch.inNetwork).toBe(false);
+    });
+
+    it('should provide detailed explanations with visual indicators', () => {
+      const match = calculateProviderMatch(mockProviders[0], mockPatient);
+      
+      expect(match.explanation.reasons.length).toBeGreaterThan(0);
+      
+      // Should include visual indicators
+      const reasonsText = match.explanation.reasons.join(' ');
+      expect(reasonsText).toMatch(/[✓⚠•]/); // Should contain visual indicators
+    });
+
+    it('should calculate scores for all five factors', () => {
+      const match = calculateProviderMatch(mockProviders[0], mockPatient);
+      
+      expect(match.explanation.distanceScore).toBeGreaterThanOrEqual(0);
+      expect(match.explanation.insuranceScore).toBeGreaterThanOrEqual(0);
+      expect(match.explanation.availabilityScore).toBeGreaterThanOrEqual(0);
+      expect(match.explanation.specialtyScore).toBeGreaterThanOrEqual(0);
+      expect(match.explanation.ratingScore).toBeGreaterThanOrEqual(0);
+      
+      expect(match.explanation.distanceScore).toBeLessThanOrEqual(100);
+      expect(match.explanation.insuranceScore).toBeLessThanOrEqual(100);
+      expect(match.explanation.availabilityScore).toBeLessThanOrEqual(100);
+      expect(match.explanation.specialtyScore).toBeLessThanOrEqual(100);
+      expect(match.explanation.ratingScore).toBeLessThanOrEqual(100);
+    });
+
+    it('should include "Why this provider?" explanation', () => {
+      const match = calculateProviderMatch(mockProviders[0], mockPatient);
+      
+      expect(match.explanation.whyThisProvider).toBeDefined();
+      expect(match.explanation.whyThisProvider).toContain(mockProviders[0].name);
+      expect(match.explanation.whyThisProvider).toContain('top recommendation because');
+    });
+  });
+
   describe('findMatchingProviders', () => {
     it('should find and rank providers for a patient', () => {
       const matches = findMatchingProviders(mockProviders, mockPatient, 3);
@@ -179,6 +282,80 @@ describe('Provider Matching Functions', () => {
       // Should include explanation data
       expect(matches[0].explanation).toBeDefined();
       expect(matches[0].explanation.reasons.length).toBeGreaterThan(0);
+    });
+
+    it('should prioritize providers with better multi-factor scores', () => {
+      const matches = findMatchingProviders(mockProviders, mockPatient, 3);
+      
+      // First match should be the Physical Therapy provider (specialty + insurance match)
+      expect(matches[0].provider.type).toBe('Physical Therapy');
+      expect(matches[0].inNetwork).toBe(true);
+      expect(matches[0].matchScore).toBeGreaterThan(70); // Should score high due to perfect matches
+    });
+  });
+
+  describe('generateProviderRecommendationExplanation', () => {
+    it('should generate comprehensive "Why this provider?" explanations', () => {
+      const explanation = generateProviderRecommendationExplanation({
+        matchScore: 85,
+        inNetwork: true,
+        specialtyMatch: true,
+        distance: 3.2,
+        availabilityScore: 95,
+        ratingScore: 4.8,
+        providerName: 'Boston Physical Therapy Center',
+        requiredService: 'Physical Therapy'
+      });
+
+      expect(explanation).toContain('Boston Physical Therapy Center is our top recommendation because');
+      expect(explanation).toContain('insurance plan');
+      expect(explanation).toContain('expertise in physical therapy');
+      expect(explanation).toContain('reasonably close');
+      expect(explanation).toContain('immediately or tomorrow');
+      expect(explanation).toContain('outstanding patient satisfaction ratings');
+    });
+
+    it('should handle providers with limited benefits gracefully', () => {
+      const explanation = generateProviderRecommendationExplanation({
+        matchScore: 45,
+        inNetwork: false,
+        specialtyMatch: false,
+        distance: 25,
+        availabilityScore: 30,
+        ratingScore: 3.2,
+        providerName: 'Generic Provider',
+        requiredService: 'Physical Therapy'
+      });
+
+      expect(explanation).toContain('Generic Provider');
+      expect(explanation).toContain('physical therapy services');
+    });
+
+    it('should provide appropriate match quality assessment', () => {
+      const excellentMatch = generateProviderRecommendationExplanation({
+        matchScore: 95,
+        inNetwork: true,
+        specialtyMatch: true,
+        distance: 1,
+        availabilityScore: 100,
+        ratingScore: 5.0,
+        providerName: 'Perfect Provider',
+        requiredService: 'Physical Therapy'
+      });
+
+      const poorMatch = generateProviderRecommendationExplanation({
+        matchScore: 40,
+        inNetwork: false,
+        specialtyMatch: true, // Give it at least one reason so it doesn't fall into edge case
+        distance: 30,
+        availabilityScore: 20,
+        ratingScore: 3.0,
+        providerName: 'Poor Provider',
+        requiredService: 'Physical Therapy'
+      });
+
+      expect(excellentMatch).toContain('exceptional match');
+      expect(poorMatch).toContain('consider other options');
     });
   });
 });

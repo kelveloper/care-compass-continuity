@@ -265,6 +265,18 @@ export const ProviderMatchCards = ({
                       </div>
                     </div>
 
+                    {/* Why This Provider? Explanation */}
+                    <div className="bg-accent/50 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-primary rounded-full"></div>
+                        <p className="text-sm font-semibold text-foreground">Why this provider?</p>
+                      </div>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {match.explanation.whyThisProvider || 
+                         `${match.provider.name} is recommended based on their specialty match, proximity to your location, and insurance network status.`}
+                      </p>
+                    </div>
+
                     {/* Match Score Breakdown */}
                     <div className="text-xs text-muted-foreground">
                       <p className="font-medium mb-1">Match Score: {match.matchScore}%</p>

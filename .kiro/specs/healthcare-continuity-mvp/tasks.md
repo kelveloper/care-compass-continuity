@@ -141,13 +141,13 @@
 
 #### Task 4.2: Smart Provider Matching
 
-- [ ] Implement multi-factor scoring algorithm:
+- [x] Implement multi-factor scoring algorithm:
   - Distance weight (closer = better)
   - Insurance network match (in-network = higher score)
   - Availability (sooner = better)
   - Provider rating
   - Specialty match
-- [ ] Add "Why this provider?" explanation
+- [x] Add "Why this provider?" explanation
 
 #### Task 4.3: Referral Workflow
 

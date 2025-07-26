@@ -39,6 +39,7 @@ export interface ProviderMatch {
     specialtyScore: number;
     ratingScore: number;
     reasons: string[];
+    whyThisProvider?: string; // "Why this provider?" explanation
   };
 }
 

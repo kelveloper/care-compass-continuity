@@ -303,8 +303,185 @@ export function calculateProximityScore(distance: number): number {
 }
 
 /**
- * Calculate comprehensive provider match score
- * Implements multi-criteria provider ranking algorithm
+ * Multi-factor scoring algorithm weights and configuration
+ * These weights determine the relative importance of each matching factor
+ */
+export const SCORING_WEIGHTS = {
+  insurance: 0.30,   // Insurance network match is most critical (30%)
+  distance: 0.25,    // Geographic proximity is very important (25%)
+  specialty: 0.20,   // Specialty match is important (20%)
+  availability: 0.15, // Availability timing matters (15%)
+  rating: 0.10,      // Provider quality/rating (10%)
+} as const;
+
+/**
+ * Get detailed explanation of the scoring algorithm
+ * @returns Object describing how the multi-factor scoring works
+ */
+export function getScoringAlgorithmExplanation() {
+  return {
+    description: "Multi-factor provider matching algorithm that evaluates providers across 5 key dimensions",
+    factors: [
+      {
+        name: "Insurance Network Match",
+        weight: SCORING_WEIGHTS.insurance,
+        description: "In-network providers receive full points (100), out-of-network receive penalty (25)",
+        importance: "Most critical - affects patient costs significantly"
+      },
+      {
+        name: "Geographic Distance",
+        weight: SCORING_WEIGHTS.distance,
+        description: "Closer providers score higher using distance-based tiers",
+        importance: "Very important - affects patient convenience and compliance"
+      },
+      {
+        name: "Specialty Match",
+        weight: SCORING_WEIGHTS.specialty,
+        description: "Providers matching required service type receive full points (100)",
+        importance: "Important - ensures appropriate care expertise"
+      },
+      {
+        name: "Availability",
+        weight: SCORING_WEIGHTS.availability,
+        description: "Earlier availability receives higher scores (immediate=100, later=lower)",
+        importance: "Moderately important - affects care continuity timing"
+      },
+      {
+        name: "Provider Rating",
+        weight: SCORING_WEIGHTS.rating,
+        description: "5-star rating system converted to 100-point scale",
+        importance: "Least important but still factors in quality assessment"
+      }
+    ],
+    totalWeight: Object.values(SCORING_WEIGHTS).reduce((sum, weight) => sum + weight, 0),
+    scoreRange: "0-100 (higher scores indicate better matches)"
+  };
+}
+
+/**
+ * Generate "Why this provider?" explanation based on match factors
+ * @param params - Object containing match parameters
+ * @returns String explanation of why this provider is recommended
+ */
+export function generateProviderRecommendationExplanation(params: {
+  matchScore: number;
+  inNetwork: boolean;
+  specialtyMatch: boolean;
+  distance: number;
+  availabilityScore: number;
+  ratingScore: number;
+  providerName: string;
+  requiredService: string;
+}): string {
+  const {
+    matchScore,
+    inNetwork,
+    specialtyMatch,
+    distance,
+    availabilityScore,
+    ratingScore,
+    providerName,
+    requiredService
+  } = params;
+
+  let explanation = `${providerName} is our top recommendation because `;
+  const reasons: string[] = [];
+
+  // Primary reasons (highest weighted factors) - Insurance Network (30% weight)
+  if (inNetwork) {
+    reasons.push("they accept your insurance plan, which means lower out-of-pocket costs");
+  } else {
+    reasons.push("they provide the specialized care you need (though they're out-of-network, which may cost more)");
+  }
+
+  // Specialty Match (20% weight)
+  if (specialtyMatch) {
+    reasons.push(`they have proven expertise in ${requiredService.toLowerCase()}`);
+  } else {
+    reasons.push(`they can provide ${requiredService.toLowerCase()} services`);
+  }
+
+  // Geographic Distance (25% weight)
+  if (distance < 1) {
+    reasons.push(`they're extremely convenient to reach (less than 1 mile from your location)`);
+  } else if (distance < 3) {
+    reasons.push(`they're very close to your location (${Math.round(distance * 10) / 10} miles away)`);
+  } else if (distance < 10) {
+    reasons.push(`they're reasonably close (${Math.round(distance * 10) / 10} miles from your location)`);
+  } else if (distance < 20) {
+    reasons.push(`they're within a reasonable driving distance (${Math.round(distance * 10) / 10} miles away)`);
+  } else {
+    reasons.push(`they're available for your care needs (${Math.round(distance * 10) / 10} miles from your location)`);
+  }
+
+  // Availability (15% weight)
+  if (availabilityScore >= 95) {
+    reasons.push("they can see you immediately or tomorrow");
+  } else if (availabilityScore >= 80) {
+    reasons.push("they have excellent availability this week");
+  } else if (availabilityScore >= 60) {
+    reasons.push("they have good availability next week");
+  } else if (availabilityScore >= 40) {
+    reasons.push("they can schedule you within the next month");
+  } else {
+    reasons.push("they're working to accommodate your scheduling needs");
+  }
+
+  // Provider Rating (10% weight)
+  if (ratingScore >= 4.8) {
+    reasons.push("they have outstanding patient satisfaction ratings (4.8+ stars)");
+  } else if (ratingScore >= 4.5) {
+    reasons.push("they have excellent patient reviews (4.5+ stars)");
+  } else if (ratingScore >= 4.0) {
+    reasons.push("they have strong patient satisfaction scores (4.0+ stars)");
+  } else if (ratingScore >= 3.5) {
+    reasons.push("they maintain good patient relationships");
+  }
+
+  // Handle edge cases
+  if (reasons.length === 0) {
+    return `${providerName} is available to provide ${requiredService.toLowerCase()} services and can help with your care needs.`;
+  }
+
+  // Construct the explanation with better flow
+  if (reasons.length === 1) {
+    explanation += reasons[0] + ".";
+  } else if (reasons.length === 2) {
+    explanation += reasons[0] + " and " + reasons[1] + ".";
+  } else if (reasons.length === 3) {
+    explanation += reasons[0] + ", " + reasons[1] + ", and " + reasons[2] + ".";
+  } else {
+    // For 4+ reasons, group them better
+    const lastReason = reasons.pop();
+    explanation += reasons.slice(0, -1).join(", ") + ", " + reasons[reasons.length - 1] + ", and " + lastReason + ".";
+  }
+
+  // Add personalized match score context
+  if (matchScore >= 90) {
+    explanation += " This is an exceptional match that meets all your key requirements.";
+  } else if (matchScore >= 80) {
+    explanation += " This is an excellent match for your specific needs.";
+  } else if (matchScore >= 70) {
+    explanation += " This provider is a strong match for your care requirements.";
+  } else if (matchScore >= 60) {
+    explanation += " This provider meets most of your important criteria.";
+  } else if (matchScore >= 50) {
+    explanation += " While not perfect, this provider can address your care needs effectively.";
+  } else {
+    explanation += " This provider is available to help, though you may want to consider other options if available.";
+  }
+
+  return explanation;
+}
+
+/**
+ * Calculate comprehensive provider match score using multi-factor scoring algorithm
+ * Implements all required scoring factors with proper weighting:
+ * - Distance weight (closer = better) - 25%
+ * - Insurance network match (in-network = higher score) - 30%
+ * - Availability (sooner = better) - 15%
+ * - Provider rating - 10%
+ * - Specialty match - 20%
  * 
  * @param provider - Provider to evaluate
  * @param patient - Patient to match with
@@ -328,78 +505,98 @@ export function calculateProviderMatch(
     providerCoords.lng
   );
   
-  // Insurance network matching
+  // Factor 1: Insurance network matching (30% weight)
   const inNetwork = isInNetwork(provider, patient.insurance);
+  const insuranceScore = inNetwork ? 100 : 25; // Strong penalty for out-of-network
   
-  // Specialty matching
+  // Factor 2: Specialty matching (20% weight)
   const specialtyMatch = hasSpecialtyMatch(provider, patient.required_followup);
+  const specialtyScore = specialtyMatch ? 100 : 15; // Strong penalty for specialty mismatch
   
-  // Calculate individual scores (0-100)
+  // Factor 3: Distance weight - closer is better (25% weight)
   const distanceScore = calculateProximityScore(distance);
-  const insuranceScore = inNetwork ? 100 : 30; // Big bonus for in-network
+  
+  // Factor 4: Availability - sooner is better (15% weight)
   const availabilityScore = calculateAvailabilityScore(provider.availability_next);
-  const specialtyScore = specialtyMatch ? 100 : 20; // Big bonus for specialty match
-  const ratingScore = (provider.rating / 5) * 100; // Convert 5-star to 100-point scale
   
-  // Weighted total score - adjustable weights based on importance
-  const weights = {
-    distance: 0.25,    // Geographic proximity is important (25%)
-    insurance: 0.30,   // Insurance network match is most important (30%)
-    availability: 0.15, // Availability is moderately important (15%)
-    specialty: 0.20,   // Specialty match is important (20%)
-    rating: 0.10,      // Rating is least important but still factors in (10%)
-  };
+  // Factor 5: Provider rating (10% weight)
+  const ratingScore = Math.min(100, Math.max(0, (provider.rating / 5) * 100)); // Convert 5-star to 100-point scale
   
+  // Calculate weighted total score using multi-factor scoring algorithm
   const matchScore = Math.round(
-    distanceScore * weights.distance +
-    insuranceScore * weights.insurance +
-    availabilityScore * weights.availability +
-    specialtyScore * weights.specialty +
-    ratingScore * weights.rating
+    insuranceScore * SCORING_WEIGHTS.insurance +
+    distanceScore * SCORING_WEIGHTS.distance +
+    specialtyScore * SCORING_WEIGHTS.specialty +
+    availabilityScore * SCORING_WEIGHTS.availability +
+    ratingScore * SCORING_WEIGHTS.rating
   );
   
-  // Generate explanation reasons with more detail
+  // Generate detailed explanation reasons
   const reasons: string[] = [];
   
-  // Insurance explanation
+  // Insurance network explanation (most important factor)
   if (inNetwork) {
-    reasons.push("In your insurance network");
+    reasons.push("✓ In your insurance network");
   } else {
-    reasons.push("Out-of-network provider");
+    reasons.push("⚠ Out-of-network provider (higher costs)");
   }
   
-  // Specialty explanation
+  // Specialty match explanation (second most important)
   if (specialtyMatch) {
-    reasons.push(`Specializes in ${patient.required_followup}`);
+    reasons.push(`✓ Specializes in ${patient.required_followup}`);
+  } else {
+    reasons.push(`⚠ May not specialize in ${patient.required_followup}`);
   }
   
-  // Distance explanation
+  // Distance explanation (third most important)
   if (distance < 1) {
-    reasons.push("Very close to your location (< 1 mile)");
+    reasons.push("✓ Very close to your location (< 1 mile)");
   } else if (distance < 5) {
-    reasons.push(`Close to your location (${Math.round(distance * 10) / 10} miles)`);
+    reasons.push(`✓ Close to your location (${Math.round(distance * 10) / 10} miles)`);
   } else if (distance < 15) {
-    reasons.push(`${Math.round(distance * 10) / 10} miles from your location`);
+    reasons.push(`• ${Math.round(distance * 10) / 10} miles from your location`);
+  } else {
+    reasons.push(`⚠ Far from your location (${Math.round(distance * 10) / 10} miles)`);
   }
   
   // Availability explanation
-  if (availabilityScore >= 90) {
-    reasons.push("Available immediately");
+  if (availabilityScore >= 95) {
+    reasons.push("✓ Available immediately or tomorrow");
   } else if (availabilityScore >= 80) {
-    reasons.push("Available this week");
+    reasons.push("✓ Available this week");
   } else if (availabilityScore >= 60) {
-    reasons.push("Available next week");
+    reasons.push("• Available next week");
+  } else if (availabilityScore >= 40) {
+    reasons.push("• Available within a month");
+  } else {
+    reasons.push("⚠ Limited availability");
   }
   
   // Rating explanation
   if (provider.rating >= 4.8) {
-    reasons.push("Exceptionally highly rated");
+    reasons.push("✓ Exceptionally highly rated (4.8+ stars)");
   } else if (provider.rating >= 4.5) {
-    reasons.push("Highly rated by patients");
+    reasons.push("✓ Highly rated by patients (4.5+ stars)");
   } else if (provider.rating >= 4.0) {
-    reasons.push("Well-rated provider");
+    reasons.push("• Well-rated provider (4.0+ stars)");
+  } else if (provider.rating >= 3.5) {
+    reasons.push("• Average rating (3.5+ stars)");
+  } else {
+    reasons.push("⚠ Below average rating");
   }
   
+  // Generate "Why this provider?" explanation
+  const whyThisProvider = generateProviderRecommendationExplanation({
+    matchScore,
+    inNetwork,
+    specialtyMatch,
+    distance,
+    availabilityScore,
+    ratingScore: provider.rating,
+    providerName: provider.name,
+    requiredService: patient.required_followup
+  });
+
   return {
     provider: {
       ...provider,
@@ -419,6 +616,7 @@ export function calculateProviderMatch(
       specialtyScore,
       ratingScore,
       reasons,
+      whyThisProvider, // Always include the "Why this provider?" explanation
     },
   };
 }
