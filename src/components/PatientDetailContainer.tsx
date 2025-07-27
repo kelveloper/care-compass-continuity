@@ -33,26 +33,100 @@ export const PatientDetailContainer = ({ patientId, onBack }: PatientDetailConta
     return (
       <div className="min-h-screen bg-background">
         <div className="border-b bg-card">
-          <div className="container mx-auto px-6 py-4">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+          <div className="container mx-auto px-4 sm:px-6 py-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+              <Button variant="ghost" size="sm" onClick={onBack} className="gap-2 self-start">
                 <ArrowLeft className="h-4 w-4" />
-                Back to Dashboard
+                <span className="hidden sm:inline">Back to Dashboard</span>
+                <span className="sm:hidden">Back</span>
               </Button>
-              <h1 className="text-2xl font-bold text-foreground">Loading Patient...</h1>
+              <div className="flex-1 min-w-0">
+                <div className="h-6 sm:h-7 w-48 sm:w-64 bg-muted rounded mb-2 animate-pulse"></div>
+                <div className="h-4 sm:h-5 w-36 sm:w-48 bg-muted rounded animate-pulse"></div>
+              </div>
+              <div className="h-6 sm:h-8 w-24 sm:w-32 bg-muted rounded-full animate-pulse self-start sm:self-center"></div>
             </div>
           </div>
         </div>
         
-        <div className="container mx-auto px-6 py-8">
-          <Card>
-            <CardContent className="flex items-center justify-center py-12">
-              <div className="flex items-center gap-3 text-muted-foreground">
-                <Loader2 className="h-6 w-6 animate-spin" />
-                <span>Loading patient information...</span>
+        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            {/* Patient Summary Panel Skeleton */}
+            <div className="lg:col-span-1 order-2 lg:order-1">
+              <div className="lg:sticky lg:top-8">
+                <div className="rounded-lg border bg-card shadow-sm">
+                  <div className="p-4 sm:p-6">
+                    <div className="h-5 sm:h-6 w-32 sm:w-40 bg-muted rounded mb-4 sm:mb-6 animate-pulse"></div>
+                    <div className="space-y-4 sm:space-y-6">
+                      {[...Array(8)].map((_, i) => (
+                        <div key={i}>
+                          <div className="h-3 sm:h-4 w-24 sm:w-32 bg-muted rounded mb-2 animate-pulse"></div>
+                          <div className="h-4 sm:h-5 w-36 sm:w-48 bg-muted rounded animate-pulse"></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+
+            {/* Main Content Area Skeleton */}
+            <div className="lg:col-span-2 space-y-4 sm:space-y-6 order-1 lg:order-2">
+              {/* Referral Management Skeleton */}
+              <div className="rounded-lg border bg-card shadow-sm">
+                <div className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-3">
+                    <div className="h-5 sm:h-6 w-36 sm:w-48 bg-muted rounded animate-pulse"></div>
+                    <div className="h-8 sm:h-9 w-28 sm:w-36 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  <div className="h-16 sm:h-20 bg-muted rounded animate-pulse"></div>
+                </div>
+              </div>
+              
+              {/* Risk Analysis Skeleton */}
+              <div className="rounded-lg border bg-card shadow-sm">
+                <div className="p-4 sm:p-6">
+                  <div className="h-5 sm:h-6 w-28 sm:w-32 bg-muted rounded mb-4 sm:mb-6 animate-pulse"></div>
+                  <div className="space-y-3 sm:space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="h-3 sm:h-4 w-20 sm:w-24 bg-muted rounded animate-pulse"></div>
+                      <div className="h-3 sm:h-4 w-12 sm:w-16 bg-muted rounded animate-pulse"></div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="h-3 sm:h-4 w-24 sm:w-32 bg-muted rounded animate-pulse"></div>
+                      <div className="h-3 sm:h-4 w-10 sm:w-12 bg-muted rounded animate-pulse"></div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="h-3 sm:h-4 w-22 sm:w-28 bg-muted rounded animate-pulse"></div>
+                      <div className="h-3 sm:h-4 w-11 sm:w-14 bg-muted rounded animate-pulse"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Timeline Skeleton */}
+              <div className="rounded-lg border bg-card shadow-sm">
+                <div className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-3">
+                    <div className="h-5 sm:h-6 w-32 sm:w-40 bg-muted rounded animate-pulse"></div>
+                    <div className="h-7 sm:h-8 w-16 sm:w-20 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  <div className="space-y-3 sm:space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="flex items-start gap-3 sm:gap-4">
+                        <div className="h-6 w-6 sm:h-8 sm:w-8 bg-muted rounded-full animate-pulse flex-shrink-0"></div>
+                        <div className="flex-1 min-w-0">
+                          <div className="h-3 sm:h-4 w-24 sm:w-32 bg-muted rounded mb-2 animate-pulse"></div>
+                          <div className="h-3 w-32 sm:w-48 bg-muted rounded animate-pulse"></div>
+                        </div>
+                        <div className="h-3 w-12 sm:w-16 bg-muted rounded animate-pulse flex-shrink-0"></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -63,18 +137,19 @@ export const PatientDetailContainer = ({ patientId, onBack }: PatientDetailConta
     return (
       <div className="min-h-screen bg-background">
         <div className="border-b bg-card">
-          <div className="container mx-auto px-6 py-4">
-            <div className="flex items-center gap-4">
+          <div className="container mx-auto px-4 sm:px-6 py-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
-                Back to Dashboard
+                <span className="hidden sm:inline">Back to Dashboard</span>
+                <span className="sm:hidden">Back</span>
               </Button>
-              <h1 className="text-2xl font-bold text-foreground">Patient Not Found</h1>
+              <h1 className="text-lg sm:text-2xl font-bold text-foreground">Patient Not Found</h1>
             </div>
           </div>
         </div>
         
-        <div className="container mx-auto px-6 py-8">
+        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -95,18 +170,19 @@ export const PatientDetailContainer = ({ patientId, onBack }: PatientDetailConta
     return (
       <div className="min-h-screen bg-background">
         <div className="border-b bg-card">
-          <div className="container mx-auto px-6 py-4">
-            <div className="flex items-center gap-4">
+          <div className="container mx-auto px-4 sm:px-6 py-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
-                Back to Dashboard
+                <span className="hidden sm:inline">Back to Dashboard</span>
+                <span className="sm:hidden">Back</span>
               </Button>
-              <h1 className="text-2xl font-bold text-foreground">Error Loading Patient</h1>
+              <h1 className="text-lg sm:text-2xl font-bold text-foreground">Error Loading Patient</h1>
             </div>
           </div>
         </div>
         
-        <div className="container mx-auto px-6 py-8">
+        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -128,18 +204,19 @@ export const PatientDetailContainer = ({ patientId, onBack }: PatientDetailConta
     return (
       <div className="min-h-screen bg-background">
         <div className="border-b bg-card">
-          <div className="container mx-auto px-6 py-4">
-            <div className="flex items-center gap-4">
+          <div className="container mx-auto px-4 sm:px-6 py-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
-                Back to Dashboard
+                <span className="hidden sm:inline">Back to Dashboard</span>
+                <span className="sm:hidden">Back</span>
               </Button>
-              <h1 className="text-2xl font-bold text-foreground">No Patient Data</h1>
+              <h1 className="text-lg sm:text-2xl font-bold text-foreground">No Patient Data</h1>
             </div>
           </div>
         </div>
         
-        <div className="container mx-auto px-6 py-8">
+        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>

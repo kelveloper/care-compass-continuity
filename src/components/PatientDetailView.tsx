@@ -14,11 +14,13 @@ import {
   ErrorState,
 } from "./PatientDetail";
 import { useReferrals } from "@/hooks/use-referrals-safe";
+import { useOptimisticUpdates } from "@/hooks/use-optimistic-updates";
 import { useReferralNotifications } from "./PatientDetail/ReferralNotifications";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Patient, Provider, ReferralStatus } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
+import { useKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
 
 interface PatientDetailViewProps {
   patient: Patient;
@@ -46,17 +48,33 @@ export const PatientDetailView = ({
     dismissAll 
   } = useReferralNotifications();
 
+  // Keyboard navigation for patient detail view
+  useKeyboardNavigation({
+    onEscape: () => {
+      if (showProviderMatch) {
+        setShowProviderMatch(false);
+      } else {
+        onBack();
+      }
+    },
+    enableEscapeClose: true,
+  });
+
   const {
     isLoading,
     error,
-    createReferral,
-    scheduleReferral,
-    completeReferral,
-    cancelReferral,
     getPatientReferrals,
     getReferralById,
     getReferralHistory,
   } = useReferrals(patient.current_referral_id || undefined);
+
+  // Use optimistic updates for better UX
+  const {
+    createReferral: createReferralOptimistic,
+    updateReferralStatus: updateReferralStatusOptimistic,
+    isCreatingReferral: isCreatingReferralOptimistic,
+    isUpdatingReferral: isUpdatingReferralOptimistic,
+  } = useOptimisticUpdates();
 
   useEffect(() => {
     const fetchPatientReferrals = async () => {
@@ -225,11 +243,11 @@ export const PatientDetailView = ({
 
     setIsCreatingReferral(true);
     try {
-      const newReferral = await createReferral(
-        patient.id,
-        selectedProvider.id,
-        patient.required_followup.split("+")[0].trim()
-      );
+      const newReferral = await createReferralOptimistic({
+        patientId: patient.id,
+        providerId: selectedProvider.id,
+        serviceType: patient.required_followup.split("+")[0].trim()
+      });
 
       if (newReferral) {
         setActiveReferral({
@@ -279,13 +297,13 @@ export const PatientDetailView = ({
     tomorrow.setDate(tomorrow.getDate() + 1);
     const scheduledDateStr = tomorrow.toISOString();
 
-    const success = await scheduleReferral(
-      activeReferral.id,
-      scheduledDateStr,
-      "Appointment scheduled by care coordinator"
-    );
-
-    if (success) {
+    try {
+      await updateReferralStatusOptimistic({
+        referralId: activeReferral.id,
+        status: 'scheduled',
+        notes: "Appointment scheduled by care coordinator",
+        patientId: patient.id
+      });
       setActiveReferral({
         ...activeReferral,
         status: "scheduled",
@@ -306,18 +324,26 @@ export const PatientDetailView = ({
         referralId: activeReferral.id,
         actionRequired: false,
       });
+    } catch (error) {
+      console.error("Error scheduling referral:", error);
+      toast({
+        title: "Error Scheduling Appointment",
+        description: "Failed to schedule appointment. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   const handleCompleteReferral = async () => {
     if (!activeReferral?.id) return;
 
-    const success = await completeReferral(
-      activeReferral.id,
-      "Care completed by provider"
-    );
-
-    if (success) {
+    try {
+      await updateReferralStatusOptimistic({
+        referralId: activeReferral.id,
+        status: 'completed',
+        notes: "Care completed by provider",
+        patientId: patient.id
+      });
       setActiveReferral({
         ...activeReferral,
         status: "completed",
@@ -338,18 +364,26 @@ export const PatientDetailView = ({
         referralId: activeReferral.id,
         actionRequired: false,
       });
+    } catch (error) {
+      console.error("Error completing referral:", error);
+      toast({
+        title: "Error Completing Referral",
+        description: "Failed to complete referral. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   const handleCancelReferral = async () => {
     if (!activeReferral?.id) return;
 
-    const success = await cancelReferral(
-      activeReferral.id,
-      "Referral cancelled by care coordinator"
-    );
-
-    if (success) {
+    try {
+      await updateReferralStatusOptimistic({
+        referralId: activeReferral.id,
+        status: 'cancelled',
+        notes: "Referral cancelled by care coordinator",
+        patientId: patient.id
+      });
       // We still want to keep the history for the cancelled referral
       const historyData = await getReferralHistory(activeReferral.id);
       setHistory(historyData);
@@ -367,6 +401,13 @@ export const PatientDetailView = ({
       // Reset the active referral and selected provider
       setActiveReferral(null);
       setSelectedProvider(null);
+    } catch (error) {
+      console.error("Error cancelling referral:", error);
+      toast({
+        title: "Error Cancelling Referral",
+        description: "Failed to cancel referral. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -426,38 +467,49 @@ export const PatientDetailView = ({
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto px-4 sm:px-6 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
             <Button
               variant="ghost"
               size="sm"
               onClick={onBack}
-              className="gap-2"
+              className="gap-2 self-start"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back to Dashboard
+              <span className="hidden sm:inline">Back to Dashboard</span>
+              <span className="sm:hidden">Back</span>
             </Button>
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-foreground">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate">
                 Discharge Plan: {patient.name}
               </h1>
-              <p className="text-muted-foreground">{patient.diagnosis}</p>
+              <p className="text-sm sm:text-base text-muted-foreground truncate">
+                {patient.diagnosis}
+                <span className="block text-xs text-muted-foreground/80 mt-1">
+                  Press <kbd className="px-1 py-0.5 text-xs bg-muted rounded">Esc</kbd> to go back
+                </span>
+              </p>
             </div>
             <Badge
-              className={`text-sm px-3 py-1 ${getRiskBadgeClass(
+              className={`text-xs sm:text-sm px-2 sm:px-3 py-1 self-start sm:self-center flex-shrink-0 ${getRiskBadgeClass(
                 patient.leakageRisk.level
               )}`}
             >
-              {patient.leakageRisk.score}% Leakage Risk -{" "}
-              {patient.leakageRisk.level.toUpperCase()}
+              <span className="hidden sm:inline">
+                {patient.leakageRisk.score}% Leakage Risk -{" "}
+                {patient.leakageRisk.level.toUpperCase()}
+              </span>
+              <span className="sm:hidden">
+                {patient.leakageRisk.score}% {patient.leakageRisk.level.toUpperCase()}
+              </span>
             </Badge>
           </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1">
+      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          <div className="lg:col-span-1 order-2 lg:order-1">
             <EditablePatientSummaryPanel 
             patient={patient}
             onPatientUpdated={(updatedPatient) => {
@@ -470,14 +522,14 @@ export const PatientDetailView = ({
           />
           </div>
 
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6 order-1 lg:order-2">
             <ReferralManagement
               patient={patient}
               selectedProvider={selectedProvider}
               activeReferral={activeReferral}
               isLoading={isLoading}
               error={error}
-              isCreatingReferral={isCreatingReferral}
+              isCreatingReferral={isCreatingReferral || isCreatingReferralOptimistic}
               onAddFollowupCare={handleAddFollowupCare}
               onSendReferral={handleSendReferral}
               onScheduleReferral={handleScheduleReferral}

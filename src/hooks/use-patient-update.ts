@@ -3,13 +3,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { Patient, PatientUpdate } from '@/types';
 import { enhancePatientData } from '@/lib/risk-calculator';
 import type { PatientUpdate as DbPatientUpdate } from '@/integrations/supabase/types';
+import { useToast } from './use-toast';
 
 /**
  * Custom hook for updating patient information
- * Provides mutation function and status indicators
+ * Provides mutation function and status indicators with toast notifications
  */
 export function usePatientUpdate() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   
   return useMutation({
     mutationFn: async ({ 
@@ -60,9 +62,22 @@ export function usePatientUpdate() {
       // Invalidate and refetch queries related to this patient
       queryClient.invalidateQueries({ queryKey: ['patient', variables.patientId] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
+      
+      // Show success toast notification
+      toast({
+        title: 'Patient Updated Successfully',
+        description: 'Patient information has been saved and updated.',
+      });
     },
     onError: (error) => {
       console.error('Error updating patient:', error);
+      
+      // Show error toast notification
+      toast({
+        title: 'Failed to Update Patient',
+        description: error.message || 'There was an error updating the patient information. Please try again.',
+        variant: 'destructive',
+      });
     }
   });
 }

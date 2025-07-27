@@ -6,10 +6,13 @@ import { UserCircle, Clock, AlertCircle, CheckCircle2, Loader2, RefreshCw, Searc
 import { PatientDetailContainer } from "./PatientDetailContainer";
 import { NotificationCenter } from "./NotificationCenter";
 import { usePatients } from "@/hooks/use-patients";
+import { useOptimisticListUpdates } from "@/hooks/use-optimistic-updates";
 import { Patient, PatientFilters } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
+import { useListKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
 
 const getRiskBadgeVariant = (level: string) => {
   switch (level) {
@@ -50,6 +53,12 @@ export const Dashboard = () => {
   const [realtimeActive, setRealtimeActive] = useState<boolean>(true);
   const [recentlyUpdated, setRecentlyUpdated] = useState<Set<string>>(new Set());
   const prevPatientsRef = useRef<Patient[] | undefined>();
+  const { toast } = useToast();
+  
+
+  
+  // Use optimistic list updates for better UX
+  const { searchOptimistic, sortOptimistic, filterOptimistic } = useOptimisticListUpdates();
   
   // Create filters object for server-side filtering
   const filters: PatientFilters = useMemo(() => {
@@ -103,6 +112,16 @@ export const Dashboard = () => {
     failureCount
   });
   
+  // Show success toast when data loads successfully for the first time
+  useEffect(() => {
+    if (patients && patients.length > 0 && !isLoading && !error && !prevPatientsRef.current) {
+      toast({
+        title: 'Dashboard Loaded',
+        description: `Successfully loaded ${patients.length} patient${patients.length === 1 ? '' : 's'}.`,
+      });
+    }
+  }, [patients, isLoading, error, toast]);
+  
   // Detect changes in patient data to highlight recently updated patients
   useEffect(() => {
     if (!patients || !prevPatientsRef.current) {
@@ -124,6 +143,12 @@ export const Dashboard = () => {
     if (updatedPatientIds.size > 0) {
       setRecentlyUpdated(updatedPatientIds);
       
+      // Show toast notification for updated patients
+      toast({
+        title: 'Patient Data Updated',
+        description: `${updatedPatientIds.size} patient${updatedPatientIds.size === 1 ? '' : 's'} updated with new risk scores.`,
+      });
+      
       // Clear the highlight after 2 seconds (reduced from 3 seconds)
       const timer = setTimeout(() => {
         setRecentlyUpdated(new Set());
@@ -133,13 +158,78 @@ export const Dashboard = () => {
     }
     
     prevPatientsRef.current = patients;
-  }, [patients]);
+  }, [patients, toast]);
 
-  // Since we're using server-side filtering, we don't need to filter the patients again
-  // Just use the patients directly from the hook, which are already sorted by risk score
+  // Use optimistic updates for immediate feedback while server-side filtering is in progress
   const sortedPatients = useMemo(() => {
-    return patients || [];
-  }, [patients]);
+    if (!patients) return [];
+    
+    // If we have a search query and are still loading, show optimistic results
+    if (searchQuery && isFetching && patients.length > 0) {
+      const optimisticResults = searchOptimistic(searchQuery);
+      return optimisticResults;
+    }
+    
+    // Otherwise use the server-filtered results
+    return patients;
+  }, [patients, searchQuery, isFetching, searchOptimistic]);
+
+  // Keyboard navigation for patient list
+  const {
+    selectedIndex,
+    setSelectedIndex,
+    focusItem,
+    setItemRef,
+  } = useListKeyboardNavigation(
+    sortedPatients,
+    (patient, index) => {
+      console.log('Dashboard: Keyboard selection for patient:', patient.id, patient.name);
+      setSelectedPatient(patient);
+    }
+  );
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Focus search on '/' key
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const activeElement = document.activeElement as HTMLElement;
+        const isInputFocused = activeElement?.tagName === 'INPUT' || 
+                              activeElement?.tagName === 'TEXTAREA' || 
+                              activeElement?.contentEditable === 'true';
+        
+        if (!isInputFocused) {
+          e.preventDefault();
+          const searchInput = document.querySelector('input[placeholder*="Search patients"]') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+          }
+        }
+      }
+      
+      // Clear filters on Escape (when not in input)
+      if (e.key === 'Escape') {
+        const activeElement = document.activeElement as HTMLElement;
+        const isInputFocused = activeElement?.tagName === 'INPUT' || 
+                              activeElement?.tagName === 'TEXTAREA';
+        
+        if (!isInputFocused && (searchQuery || riskFilter !== "all" || statusFilter !== "all")) {
+          setSearchQuery("");
+          setRiskFilter("all");
+          setStatusFilter("all");
+          toast({
+            title: 'Filters Cleared',
+            description: 'All filters have been reset using keyboard shortcut.',
+          });
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [searchQuery, riskFilter, statusFilter, toast]);
 
   if (selectedPatient) {
     console.log('Dashboard: Navigating to patient detail for:', selectedPatient.id, selectedPatient.name);
@@ -158,16 +248,16 @@ export const Dashboard = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">Continuity</h1>
-              <p className="text-muted-foreground">Care Coordination Dashboard</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Continuity</h1>
+              <p className="text-sm sm:text-base text-muted-foreground">Care Coordination Dashboard</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <NotificationCenter />
-              <UserCircle className="h-8 w-8 text-muted-foreground" />
-              <div className="text-right">
+              <UserCircle className="h-6 w-6 sm:h-8 sm:w-8 text-muted-foreground" />
+              <div className="text-right hidden sm:block">
                 <p className="font-medium text-foreground">Brenda Chen, RN</p>
                 <p className="text-sm text-muted-foreground">Care Coordinator</p>
               </div>
@@ -194,22 +284,32 @@ export const Dashboard = () => {
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-2xl font-semibold text-foreground">Your Patients</h2>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+            <h2 className="text-xl sm:text-2xl font-semibold text-foreground">Your Patients</h2>
+            <div className="flex items-center gap-2 flex-wrap">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
                       variant={realtimeActive ? "outline" : "secondary"}
                       size="sm" 
-                      onClick={() => setRealtimeActive(!realtimeActive)}
-                      className={realtimeActive ? "border-primary text-primary" : ""}
+                      onClick={() => {
+                        const newState = !realtimeActive;
+                        setRealtimeActive(newState);
+                        toast({
+                          title: `Real-time Updates ${newState ? 'Enabled' : 'Disabled'}`,
+                          description: newState 
+                            ? 'Patient data will automatically update when changes occur.'
+                            : 'Real-time updates have been disabled. Use the refresh button to update data.',
+                        });
+                      }}
+                      className={`${realtimeActive ? "border-primary text-primary" : ""} text-xs sm:text-sm`}
                     >
-                      <Wifi className={`h-4 w-4 mr-2 ${realtimeActive ? 'text-primary' : 'text-muted-foreground'}`} />
-                      {realtimeActive ? "Real-time On" : "Real-time Off"}
+                      <Wifi className={`h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 ${realtimeActive ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <span className="hidden sm:inline">{realtimeActive ? "Real-time On" : "Real-time Off"}</span>
+                      <span className="sm:hidden">{realtimeActive ? "Live" : "Off"}</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -221,11 +321,21 @@ export const Dashboard = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => refetch()}
+                onClick={async () => {
+                  const result = await refetch();
+                  if (result.data && !result.error) {
+                    toast({
+                      title: 'Data Refreshed',
+                      description: `Successfully refreshed ${result.data.length} patient records.`,
+                    });
+                  }
+                }}
                 disabled={isFetching}
+                className="text-xs sm:text-sm"
               >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-                Refresh
+                <RefreshCw className={`h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 ${isFetching ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Refresh</span>
+                <span className="sm:hidden">↻</span>
               </Button>
             </div>
           </div>
@@ -234,18 +344,33 @@ export const Dashboard = () => {
             {realtimeActive && (
               <span className="ml-1 text-primary">• Real-time sorting enabled</span>
             )}
+            <br />
+            <span className="text-xs text-muted-foreground/80">
+              Keyboard shortcuts: Press <kbd className="px-1 py-0.5 text-xs bg-muted rounded">/ </kbd> to search, 
+              <kbd className="px-1 py-0.5 text-xs bg-muted rounded mx-1">↑↓</kbd> to navigate, 
+              <kbd className="px-1 py-0.5 text-xs bg-muted rounded">Enter</kbd> to select, 
+              <kbd className="px-1 py-0.5 text-xs bg-muted rounded mx-1">Esc</kbd> to clear filters
+            </span>
           </p>
           
           {/* Search and Filter Controls */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-4">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-3 mb-4">
+            <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search patients by name, diagnosis, or service..."
-                className="pl-8"
+                placeholder="Search patients by name, diagnosis, or service... (Press / to focus)"
+                className="pl-8 text-sm sm:text-base"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 disabled={isLoading || isError}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && searchQuery) {
+                    setSearchQuery("");
+                  } else if (e.key === 'ArrowDown' && sortedPatients.length > 0) {
+                    e.preventDefault();
+                    focusItem(0);
+                  }
+                }}
               />
               {searchQuery && !isLoading && (
                 <Button
@@ -259,13 +384,13 @@ export const Dashboard = () => {
                 </Button>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Select 
                 value={riskFilter} 
                 onValueChange={setRiskFilter}
                 disabled={isLoading || isError}
               >
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full sm:w-[140px] text-sm">
                   <SelectValue placeholder="Risk Level" />
                 </SelectTrigger>
                 <SelectContent>
@@ -281,7 +406,7 @@ export const Dashboard = () => {
                 onValueChange={setStatusFilter}
                 disabled={isLoading || isError}
               >
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full sm:w-[140px] text-sm">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -297,19 +422,25 @@ export const Dashboard = () => {
           
           {/* Filter Status Indicator */}
           {!isLoading && !error && (searchQuery || riskFilter !== "all" || statusFilter !== "all") && (
-            <div className="flex items-center gap-2 mb-4 p-2 bg-muted/30 rounded-md">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
-                Showing {sortedPatients.length} {sortedPatients.length === 1 ? 'patient' : 'patients'} matching your filters
-              </span>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 p-3 sm:p-2 bg-muted/30 rounded-md">
+              <div className="flex items-center gap-2 flex-1">
+                <Filter className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-xs sm:text-sm text-muted-foreground">
+                  Showing {sortedPatients.length} {sortedPatients.length === 1 ? 'patient' : 'patients'} matching your filters
+                </span>
+              </div>
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="ml-auto h-7 px-2"
+                className="h-7 sm:h-7 px-2 text-xs sm:text-sm self-start sm:self-center"
                 onClick={() => {
                   setSearchQuery("");
                   setRiskFilter("all");
                   setStatusFilter("all");
+                  toast({
+                    title: 'Filters Cleared',
+                    description: 'All filters have been reset. Showing all patients.',
+                  });
                 }}
               >
                 Clear filters
@@ -348,22 +479,32 @@ export const Dashboard = () => {
                 {[...Array(5)].map((_, index) => (
                   <div key={index} className="flex items-center justify-between p-4 rounded-lg border animate-pulse">
                     <div className="flex items-center gap-4 flex-1">
+                      {/* Patient Info Column */}
                       <div className="flex-1">
                         <div className="h-5 w-32 bg-muted rounded mb-2"></div>
                         <div className="h-4 w-48 bg-muted rounded mb-1"></div>
                         <div className="h-3 w-24 bg-muted rounded"></div>
                       </div>
                       
+                      {/* Service Type Column */}
                       <div className="flex-1">
                         <div className="h-5 w-40 bg-muted rounded mb-2"></div>
-                        <div className="h-4 w-28 bg-muted rounded"></div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="h-4 w-4 bg-muted rounded-full"></div>
+                          <div className="h-4 w-28 bg-muted rounded"></div>
+                        </div>
                       </div>
                       
+                      {/* Risk Score Column */}
                       <div className="flex-1">
-                        <div className="h-6 w-24 bg-muted rounded"></div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-6 w-20 bg-muted rounded-full"></div>
+                          <div className="h-4 w-12 bg-muted rounded"></div>
+                        </div>
                       </div>
                     </div>
                     
+                    {/* Action Button */}
                     <div className="h-9 w-20 bg-muted rounded"></div>
                   </div>
                 ))}
@@ -399,10 +540,22 @@ export const Dashboard = () => {
                   </Button>
                   
                   <Button 
-                    onClick={() => {
+                    onClick={async () => {
                       // Disable realtime updates and try again
                       setRealtimeActive(false);
-                      setTimeout(() => refetch(), 500);
+                      toast({
+                        title: 'Real-time Updates Disabled',
+                        description: 'Attempting to reconnect with real-time updates disabled.',
+                      });
+                      setTimeout(async () => {
+                        const result = await refetch();
+                        if (result.data && !result.error) {
+                          toast({
+                            title: 'Connection Restored',
+                            description: `Successfully loaded ${result.data.length} patient records.`,
+                          });
+                        }
+                      }, 500);
                     }} 
                     variant="outline"
                     disabled={isFetching || !realtimeActive}
@@ -423,37 +576,50 @@ export const Dashboard = () => {
 
             {/* Empty State */}
             {!isLoading && !error && sortedPatients.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-8 space-y-4">
-                <UserCircle className="h-12 w-12 text-muted-foreground" />
+              <div className="flex flex-col items-center justify-center py-6 sm:py-8 space-y-3 sm:space-y-4 px-4">
+                <UserCircle className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground" />
                 <div className="text-center">
-                  <h3 className="font-medium text-foreground">No patients found</h3>
+                  <h3 className="font-medium text-foreground text-sm sm:text-base">No patients found</h3>
                   {(searchQuery || riskFilter !== "all" || statusFilter !== "all") ? (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                       No patients match your current filters. Try adjusting your search criteria.
                     </p>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                       There are currently no patients requiring follow-up care.
                     </p>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   {(searchQuery || riskFilter !== "all" || statusFilter !== "all") && (
                     <Button 
                       onClick={() => {
                         setSearchQuery("");
                         setRiskFilter("all");
                         setStatusFilter("all");
+                        toast({
+                          title: 'Filters Cleared',
+                          description: 'All filters have been reset. Showing all patients.',
+                        });
                       }} 
                       variant="outline" 
                       size="sm"
+                      className="w-full sm:w-auto text-xs sm:text-sm h-8 sm:h-9"
                     >
-                      <Filter className="h-4 w-4 mr-2" />
+                      <Filter className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                       Clear Filters
                     </Button>
                   )}
-                  <Button onClick={() => refetch()} variant="outline" size="sm">
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                  <Button onClick={async () => {
+                    const result = await refetch();
+                    if (result.data && !result.error) {
+                      toast({
+                        title: 'Data Refreshed',
+                        description: `Successfully refreshed ${result.data.length} patient records.`,
+                      });
+                    }
+                  }} variant="outline" size="sm" className="w-full sm:w-auto text-xs sm:text-sm h-8 sm:h-9">
+                    <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                     Refresh
                   </Button>
                 </div>
@@ -462,17 +628,91 @@ export const Dashboard = () => {
 
             {/* Patient List */}
             {!isLoading && !error && sortedPatients.length > 0 && (
-              <div className="space-y-4">
-                {sortedPatients.map((patient) => (
+              <div className="space-y-3 sm:space-y-4">
+                {sortedPatients.map((patient, index) => (
                 <div
                   key={patient.id}
-                  className={`flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-all duration-300 cursor-pointer ${
+                  ref={setItemRef(index)}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`View details for ${patient.name}, ${patient.diagnosis}, Risk: ${patient.leakageRisk.score}%`}
+                  className={`flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg border hover:bg-accent/50 transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
                     recentlyUpdated.has(patient.id) ? 'bg-primary/5 border-primary/20 shadow-sm' : ''
+                  } ${
+                    selectedIndex === index ? 'bg-accent/70 border-primary/50' : ''
                   }`}
                   onClick={() => setSelectedPatient(patient)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedPatient(patient);
+                    }
+                  }}
+                  onFocus={() => setSelectedIndex(index)}
                 >
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="flex-1">
+                  {/* Mobile Layout */}
+                  <div className="flex flex-col gap-3 sm:hidden w-full">
+                    {/* Patient Info Row */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-foreground text-sm truncate">
+                          {patient.name}
+                          {recentlyUpdated.has(patient.id) && (
+                            <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
+                              Updated
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-xs text-muted-foreground truncate">{patient.diagnosis}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Discharged: {new Date(patient.discharge_date).toLocaleDateString()}
+                          {patient.daysSinceDischarge && ` (${patient.daysSinceDischarge}d ago)`}
+                        </p>
+                      </div>
+                      <Badge 
+                        variant={getRiskBadgeVariant(patient.leakageRisk.level)}
+                        className={`text-xs transition-all duration-300 ml-2 flex-shrink-0
+                          ${patient.leakageRisk.level === 'high' ? 'bg-risk-high-bg text-risk-high border-risk-high' : ''}
+                          ${patient.leakageRisk.level === 'medium' ? 'bg-risk-medium-bg text-risk-medium border-risk-medium' : ''}
+                          ${patient.leakageRisk.level === 'low' ? 'bg-risk-low-bg text-risk-low border-risk-low' : ''}
+                          ${recentlyUpdated.has(patient.id) ? 'border-primary/50 shadow-sm' : ''}
+                        `}
+                      >
+                        {patient.leakageRisk.score}%
+                        {recentlyUpdated.has(patient.id) && (
+                          <span className="ml-1">↑</span>
+                        )}
+                      </Badge>
+                    </div>
+                    
+                    {/* Service and Status Row */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{patient.required_followup}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {getStatusIcon(patient.referral_status)}
+                          <span className="text-xs text-muted-foreground">{getStatusText(patient.referral_status)}</span>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="text-xs px-3 py-1 h-7 flex-shrink-0"
+                        onClick={(e) => {
+                          console.log('Dashboard: View Plan button clicked for patient:', patient.id, patient.name);
+                          e.stopPropagation();
+                          console.log('Dashboard: Setting selected patient:', patient);
+                          setSelectedPatient(patient);
+                        }}
+                      >
+                        View Plan
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Desktop Layout */}
+                  <div className="hidden sm:flex sm:items-center sm:gap-4 sm:flex-1">
+                    <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-foreground">
                         {patient.name}
                         {recentlyUpdated.has(patient.id) && (
@@ -481,22 +721,22 @@ export const Dashboard = () => {
                           </span>
                         )}
                       </h3>
-                      <p className="text-sm text-muted-foreground">{patient.diagnosis}</p>
+                      <p className="text-sm text-muted-foreground truncate">{patient.diagnosis}</p>
                       <p className="text-xs text-muted-foreground">
                         Discharged: {new Date(patient.discharge_date).toLocaleDateString()}
                         {patient.daysSinceDischarge && ` (${patient.daysSinceDischarge} days ago)`}
                       </p>
                     </div>
                     
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">{patient.required_followup}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">{patient.required_followup}</p>
                       <div className="flex items-center gap-2 mt-1">
                         {getStatusIcon(patient.referral_status)}
                         <span className="text-sm text-muted-foreground">{getStatusText(patient.referral_status)}</span>
                       </div>
                     </div>
                     
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <Badge 
                           variant={getRiskBadgeVariant(patient.leakageRisk.level)}
@@ -522,9 +762,10 @@ export const Dashboard = () => {
                   <Button 
                     variant="outline" 
                     size="sm"
+                    className="hidden sm:block flex-shrink-0"
                     onClick={(e) => {
                       console.log('Dashboard: View Plan button clicked for patient:', patient.id, patient.name);
-                      e.stopPropagation(); // Prevent event bubbling to parent card
+                      e.stopPropagation();
                       console.log('Dashboard: Setting selected patient:', patient);
                       setSelectedPatient(patient);
                     }}

@@ -11,12 +11,15 @@ export const LoadingSkeleton = ({ onBack }: LoadingSkeletonProps) => (
     <div className="border-b bg-card">
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center gap-4">
-          <div className="h-9 w-36 bg-muted rounded animate-pulse"></div>
+          <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Dashboard
+          </Button>
           <div className="flex-1">
             <div className="h-7 w-64 bg-muted rounded mb-2 animate-pulse"></div>
             <div className="h-5 w-48 bg-muted rounded animate-pulse"></div>
           </div>
-          <div className="h-8 w-32 bg-muted rounded animate-pulse"></div>
+          <div className="h-8 w-32 bg-muted rounded-full animate-pulse"></div>
         </div>
       </div>
     </div>
@@ -30,12 +33,53 @@ export const LoadingSkeleton = ({ onBack }: LoadingSkeletonProps) => (
               <div className="p-6">
                 <div className="h-6 w-40 bg-muted rounded mb-6 animate-pulse"></div>
                 <div className="space-y-6">
-                  {[...Array(8)].map((_, i) => (
-                    <div key={i}>
-                      <div className="h-4 w-32 bg-muted rounded mb-2 animate-pulse"></div>
-                      <div className="h-5 w-48 bg-muted rounded animate-pulse"></div>
-                    </div>
-                  ))}
+                  {/* Patient basic info */}
+                  <div>
+                    <div className="h-4 w-16 bg-muted rounded mb-2 animate-pulse"></div>
+                    <div className="h-5 w-32 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  
+                  {/* Date of birth */}
+                  <div>
+                    <div className="h-4 w-24 bg-muted rounded mb-2 animate-pulse"></div>
+                    <div className="h-5 w-28 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  
+                  {/* Diagnosis */}
+                  <div>
+                    <div className="h-4 w-20 bg-muted rounded mb-2 animate-pulse"></div>
+                    <div className="h-5 w-48 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  
+                  {/* Discharge date */}
+                  <div>
+                    <div className="h-4 w-28 bg-muted rounded mb-2 animate-pulse"></div>
+                    <div className="h-5 w-24 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  
+                  {/* Required followup */}
+                  <div>
+                    <div className="h-4 w-32 bg-muted rounded mb-2 animate-pulse"></div>
+                    <div className="h-5 w-40 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  
+                  {/* Insurance */}
+                  <div>
+                    <div className="h-4 w-20 bg-muted rounded mb-2 animate-pulse"></div>
+                    <div className="h-5 w-36 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  
+                  {/* Address */}
+                  <div>
+                    <div className="h-4 w-16 bg-muted rounded mb-2 animate-pulse"></div>
+                    <div className="h-5 w-44 bg-muted rounded animate-pulse"></div>
+                  </div>
+                  
+                  {/* Contact info */}
+                  <div>
+                    <div className="h-4 w-12 bg-muted rounded mb-2 animate-pulse"></div>
+                    <div className="h-5 w-32 bg-muted rounded animate-pulse"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -44,9 +88,59 @@ export const LoadingSkeleton = ({ onBack }: LoadingSkeletonProps) => (
 
         {/* Main Content Area Skeleton */}
         <div className="lg:col-span-2 space-y-6">
-          <ContentSkeleton />
-          <ContentSkeleton />
-          <ContentSkeleton />
+          {/* Referral Management Skeleton */}
+          <div className="rounded-lg border bg-card shadow-sm">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div className="h-6 w-48 bg-muted rounded animate-pulse"></div>
+                <div className="h-9 w-36 bg-muted rounded animate-pulse"></div>
+              </div>
+              <div className="h-20 bg-muted rounded animate-pulse"></div>
+            </div>
+          </div>
+          
+          {/* Risk Analysis Skeleton */}
+          <div className="rounded-lg border bg-card shadow-sm">
+            <div className="p-6">
+              <div className="h-6 w-32 bg-muted rounded mb-6 animate-pulse"></div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-24 bg-muted rounded animate-pulse"></div>
+                  <div className="h-4 w-16 bg-muted rounded animate-pulse"></div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-32 bg-muted rounded animate-pulse"></div>
+                  <div className="h-4 w-12 bg-muted rounded animate-pulse"></div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-28 bg-muted rounded animate-pulse"></div>
+                  <div className="h-4 w-14 bg-muted rounded animate-pulse"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Timeline Skeleton */}
+          <div className="rounded-lg border bg-card shadow-sm">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div className="h-6 w-40 bg-muted rounded animate-pulse"></div>
+                <div className="h-8 w-20 bg-muted rounded animate-pulse"></div>
+              </div>
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="flex items-start gap-4">
+                    <div className="h-8 w-8 bg-muted rounded-full animate-pulse"></div>
+                    <div className="flex-1">
+                      <div className="h-4 w-32 bg-muted rounded mb-2 animate-pulse"></div>
+                      <div className="h-3 w-48 bg-muted rounded animate-pulse"></div>
+                    </div>
+                    <div className="h-3 w-16 bg-muted rounded animate-pulse"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

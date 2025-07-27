@@ -4,6 +4,7 @@ import { Patient, PatientFilters } from '@/types';
 import { enhancePatientDataSync } from '@/lib/risk-calculator';
 import type { Database } from '@/integrations/supabase/types';
 import { useEffect, useRef } from 'react';
+import { useToast } from './use-toast';
 
 type DatabasePatient = Database['public']['Tables']['patients']['Row'];
 
@@ -40,6 +41,7 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
   console.log('usePatients: Hook called with filters:', filters, 'realtime:', realtimeEnabled);
   
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   
   // Add debounce ref for real-time updates
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -162,6 +164,14 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
     refetchOnWindowFocus: false, // Prevent refetch when window regains focus
     refetchOnMount: false, // Only refetch if data is stale
     placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
+    onError: (error) => {
+      // Show toast notification for network/database errors
+      toast({
+        title: 'Failed to Load Patients',
+        description: error.message || 'There was a problem connecting to the database. Please check your connection and try again.',
+        variant: 'destructive',
+      });
+    },
   });
 }
 
@@ -219,6 +229,7 @@ export function usePatient(patientId: string | undefined) {
   console.log('usePatient: Hook called with patientId:', patientId);
   
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   
   // Set up real-time subscription for a specific patient
   useEffect(() => {
@@ -320,6 +331,16 @@ export function usePatient(patientId: string | undefined) {
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
     refetchOnWindowFocus: false, // Prevent refetch when window regains focus
     placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
+    onError: (error) => {
+      // Only show toast for non-"not found" errors
+      if (!error.message.includes('not found')) {
+        toast({
+          title: 'Failed to Load Patient',
+          description: error.message || 'There was a problem loading patient data. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    },
   });
 }
 

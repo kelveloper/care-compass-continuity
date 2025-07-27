@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Provider, Patient, ProviderMatch } from '@/types';
 import { findMatchingProviders } from '@/lib/provider-matching';
 import type { Database } from '@/integrations/supabase/types';
+import { useToast } from './use-toast';
 
 type DatabaseProvider = Database['public']['Tables']['providers']['Row'];
 
@@ -20,6 +21,7 @@ export function useProviderMatch() {
   const [currentMatches, setCurrentMatches] = useState<ProviderMatch[]>([]);
   const [isMatching, setIsMatching] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Fetch all providers for matching with improved error handling and logging
   const {
@@ -132,6 +134,14 @@ export function useProviderMatch() {
         console.error('Provider matching error:', errorMessage);
         setMatchError(errorMessage);
         setCurrentMatches([]);
+        
+        // Show error toast notification
+        toast({
+          title: 'Provider Matching Failed',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+        
         return [];
       } finally {
         setIsMatching(false);
@@ -219,6 +229,21 @@ export function useProviderMatch() {
     
     // Store the matches in state
     setCurrentMatches(matches);
+    
+    // Show success toast notification
+    if (matches.length > 0) {
+      toast({
+        title: 'Provider Matches Found',
+        description: `Found ${matches.length} matching provider${matches.length === 1 ? '' : 's'} for ${patient.name}.`,
+      });
+    } else {
+      toast({
+        title: 'No Provider Matches',
+        description: 'No providers found matching the criteria. Try expanding your search.',
+        variant: 'destructive',
+      });
+    }
+    
     return matches;
   };
 
