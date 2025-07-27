@@ -14,28 +14,63 @@ export function useProviders() {
   return useQuery({
     queryKey: ['providers'],
     queryFn: async (): Promise<Provider[]> => {
+      // Use materialized view for better performance when available
       const { data, error } = await supabase
-        .from('providers')
+        .from('provider_match_cache')
         .select('*')
-        .order('rating', { ascending: false });
+        .order('rating_score', { ascending: false })
+        .order('availability_score', { ascending: false });
 
       if (error) {
-        throw new Error(`Failed to fetch providers: ${error.message}`);
+        // Fallback to regular providers table if materialized view fails
+        console.warn('Materialized view query failed, falling back to providers table:', error);
+        const fallbackResult = await supabase
+          .from('providers')
+          .select('*')
+          .order('rating', { ascending: false });
+          
+        if (fallbackResult.error) {
+          throw new Error(`Failed to fetch providers: ${fallbackResult.error.message}`);
+        }
+        
+        return fallbackResult.data?.map((dbProvider: DatabaseProvider) => ({
+          ...dbProvider,
+        })) || [];
       }
 
       if (!data) {
         return [];
       }
 
-      // Transform database providers to Provider objects
-      return data.map((dbProvider: DatabaseProvider) => ({
-        ...dbProvider,
+      // Transform cached provider data to Provider objects
+      return data.map((cachedProvider: any) => ({
+        ...cachedProvider,
+        // Map cached fields back to original provider structure
+        id: cachedProvider.id,
+        name: cachedProvider.name,
+        type: cachedProvider.type,
+        address: cachedProvider.address,
+        phone: cachedProvider.phone,
+        specialties: cachedProvider.specialties,
+        accepted_insurance: cachedProvider.accepted_insurance,
+        in_network_plans: cachedProvider.in_network_plans,
+        rating: cachedProvider.rating,
+        latitude: cachedProvider.latitude,
+        longitude: cachedProvider.longitude,
+        availability_next: cachedProvider.availability_next,
+        created_at: cachedProvider.created_at,
+        // Include pre-calculated scores for faster matching
+        _cached_availability_score: cachedProvider.availability_score,
+        _cached_rating_score: cachedProvider.rating_score,
       }));
     },
     staleTime: 10 * 60 * 1000, // Consider data fresh for 10 minutes
     gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
     retry: 3, // Retry failed requests up to 3 times
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+    refetchOnWindowFocus: false, // Providers don't change as frequently
+    refetchInterval: 15 * 60 * 1000, // Background refetch every 15 minutes
+    refetchIntervalInBackground: false, // Don't refetch providers in background to save resources
   });
 }
 
@@ -49,14 +84,19 @@ export function useProvidersByType(providerType?: string) {
   return useQuery({
     queryKey: ['providers', 'by-type', providerType],
     queryFn: async (): Promise<Provider[]> => {
+      // Use optimized query with covering index
       let query = supabase
         .from('providers')
-        .select('*')
-        .order('rating', { ascending: false });
+        .select('*');
 
       if (providerType) {
+        // Use composite index for type + rating
         query = query.eq('type', providerType);
       }
+      
+      // Order by rating using covering index
+      query = query.order('rating', { ascending: false })
+                  .order('name', { ascending: true }); // Secondary sort for consistency
 
       const { data, error } = await query;
 
@@ -77,6 +117,9 @@ export function useProvidersByType(providerType?: string) {
     gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    refetchOnWindowFocus: false, // Providers don't change as frequently
+    refetchInterval: 15 * 60 * 1000, // Background refetch every 15 minutes
+    refetchIntervalInBackground: false, // Don't refetch providers in background to save resources
   });
 }
 
@@ -91,11 +134,13 @@ export function useProvidersByInsurance(insurance?: string) {
         return [];
       }
 
+      // Use GIN indexes for faster array searches
       const { data, error } = await supabase
         .from('providers')
         .select('*')
         .or(`in_network_plans.cs.{${insurance}},accepted_insurance.cs.{${insurance}}`)
-        .order('rating', { ascending: false });
+        .order('rating', { ascending: false })
+        .order('name', { ascending: true }); // Secondary sort for consistency
 
       if (error) {
         throw new Error(`Failed to fetch providers: ${error.message}`);
@@ -114,6 +159,9 @@ export function useProvidersByInsurance(insurance?: string) {
     gcTime: 30 * 60 * 1000,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    refetchOnWindowFocus: false, // Providers don't change as frequently
+    refetchInterval: 15 * 60 * 1000, // Background refetch every 15 minutes
+    refetchIntervalInBackground: false, // Don't refetch providers in background to save resources
   });
 }
 

@@ -13,6 +13,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useListKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
+import { 
+  Pagination, 
+  PaginationContent, 
+  PaginationItem, 
+  PaginationLink, 
+  PaginationNext, 
+  PaginationPrevious,
+  PaginationEllipsis
+} from "@/components/ui/pagination";
 
 const getRiskBadgeVariant = (level: string) => {
   switch (level) {
@@ -52,6 +61,8 @@ export const Dashboard = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [realtimeActive, setRealtimeActive] = useState<boolean>(true);
   const [recentlyUpdated, setRecentlyUpdated] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [patientsPerPage] = useState<number>(10); // Fixed page size
   const prevPatientsRef = useRef<Patient[] | undefined>();
   const { toast } = useToast();
   
@@ -174,6 +185,25 @@ export const Dashboard = () => {
     return patients;
   }, [patients, searchQuery, isFetching, searchOptimistic]);
 
+  // Pagination logic
+  const totalPatients = sortedPatients.length;
+  const totalPages = Math.ceil(totalPatients / patientsPerPage);
+  const startIndex = (currentPage - 1) * patientsPerPage;
+  const endIndex = startIndex + patientsPerPage;
+  const paginatedPatients = sortedPatients.slice(startIndex, endIndex);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, riskFilter, statusFilter]);
+
+  // Reset to first page if current page is beyond total pages
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   // Keyboard navigation for patient list
   const {
     selectedIndex,
@@ -181,7 +211,7 @@ export const Dashboard = () => {
     focusItem,
     setItemRef,
   } = useListKeyboardNavigation(
-    sortedPatients,
+    paginatedPatients,
     (patient, index) => {
       console.log('Dashboard: Keyboard selection for patient:', patient.id, patient.name);
       setSelectedPatient(patient);
@@ -223,13 +253,46 @@ export const Dashboard = () => {
           });
         }
       }
+      
+      // Pagination keyboard shortcuts
+      if (e.key === 'PageUp' || (e.key === 'ArrowLeft' && e.ctrlKey)) {
+        const activeElement = document.activeElement as HTMLElement;
+        const isInputFocused = activeElement?.tagName === 'INPUT' || 
+                              activeElement?.tagName === 'TEXTAREA';
+        
+        if (!isInputFocused && currentPage > 1) {
+          e.preventDefault();
+          setCurrentPage(currentPage - 1);
+          setSelectedIndex(-1);
+          toast({
+            title: 'Previous Page',
+            description: `Navigated to page ${currentPage - 1} of ${totalPages}`,
+          });
+        }
+      }
+      
+      if (e.key === 'PageDown' || (e.key === 'ArrowRight' && e.ctrlKey)) {
+        const activeElement = document.activeElement as HTMLElement;
+        const isInputFocused = activeElement?.tagName === 'INPUT' || 
+                              activeElement?.tagName === 'TEXTAREA';
+        
+        if (!isInputFocused && currentPage < totalPages) {
+          e.preventDefault();
+          setCurrentPage(currentPage + 1);
+          setSelectedIndex(-1);
+          toast({
+            title: 'Next Page',
+            description: `Navigated to page ${currentPage + 1} of ${totalPages}`,
+          });
+        }
+      }
     };
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [searchQuery, riskFilter, statusFilter, toast]);
+  }, [searchQuery, riskFilter, statusFilter, currentPage, totalPages, toast]);
 
   if (selectedPatient) {
     console.log('Dashboard: Navigating to patient detail for:', selectedPatient.id, selectedPatient.name);
@@ -350,6 +413,12 @@ export const Dashboard = () => {
               <kbd className="px-1 py-0.5 text-xs bg-muted rounded mx-1">↑↓</kbd> to navigate, 
               <kbd className="px-1 py-0.5 text-xs bg-muted rounded">Enter</kbd> to select, 
               <kbd className="px-1 py-0.5 text-xs bg-muted rounded mx-1">Esc</kbd> to clear filters
+              {totalPages > 1 && (
+                <span>
+                  , <kbd className="px-1 py-0.5 text-xs bg-muted rounded mx-1">PgUp/PgDn</kbd> or 
+                  <kbd className="px-1 py-0.5 text-xs bg-muted rounded mx-1">Ctrl+←→</kbd> for pages
+                </span>
+              )}
             </span>
           </p>
           
@@ -426,7 +495,12 @@ export const Dashboard = () => {
               <div className="flex items-center gap-2 flex-1">
                 <Filter className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-xs sm:text-sm text-muted-foreground">
-                  Showing {sortedPatients.length} {sortedPatients.length === 1 ? 'patient' : 'patients'} matching your filters
+                  Showing {totalPatients} {totalPatients === 1 ? 'patient' : 'patients'} matching your filters
+                  {totalPages > 1 && (
+                    <span className="ml-1">
+                      (Page {currentPage} of {totalPages})
+                    </span>
+                  )}
                 </span>
               </div>
               <Button 
@@ -454,7 +528,12 @@ export const Dashboard = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-primary" />
-              Active Discharge Plans ({sortedPatients.length})
+              Active Discharge Plans ({totalPatients})
+              {totalPages > 1 && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  • Page {currentPage} of {totalPages}
+                </span>
+              )}
               {isFetching && (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               )}
@@ -575,7 +654,7 @@ export const Dashboard = () => {
             )}
 
             {/* Empty State */}
-            {!isLoading && !error && sortedPatients.length === 0 && (
+            {!isLoading && !error && totalPatients === 0 && (
               <div className="flex flex-col items-center justify-center py-6 sm:py-8 space-y-3 sm:space-y-4 px-4">
                 <UserCircle className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground" />
                 <div className="text-center">
@@ -627,9 +706,10 @@ export const Dashboard = () => {
             )}
 
             {/* Patient List */}
-            {!isLoading && !error && sortedPatients.length > 0 && (
-              <div className="space-y-3 sm:space-y-4">
-                {sortedPatients.map((patient, index) => (
+            {!isLoading && !error && totalPatients > 0 && (
+              <>
+                <div className="space-y-3 sm:space-y-4">
+                  {paginatedPatients.map((patient, index) => (
                 <div
                   key={patient.id}
                   ref={setItemRef(index)}
@@ -774,7 +854,149 @@ export const Dashboard = () => {
                   </Button>
                 </div>
               ))}
-              </div>
+                </div>
+                
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="text-sm text-muted-foreground">
+                      Showing {startIndex + 1} to {Math.min(endIndex, totalPatients)} of {totalPatients} patients
+                    </div>
+                    
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious 
+                            onClick={() => {
+                              if (currentPage > 1) {
+                                setCurrentPage(currentPage - 1);
+                                // Reset keyboard navigation selection
+                                setSelectedIndex(-1);
+                              }
+                            }}
+                            className={currentPage <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                        
+                        {/* Page Numbers */}
+                        {(() => {
+                          const pages = [];
+                          const showEllipsis = totalPages > 7;
+                          
+                          if (!showEllipsis) {
+                            // Show all pages if 7 or fewer
+                            for (let i = 1; i <= totalPages; i++) {
+                              pages.push(
+                                <PaginationItem key={i}>
+                                  <PaginationLink
+                                    onClick={() => {
+                                      setCurrentPage(i);
+                                      setSelectedIndex(-1);
+                                    }}
+                                    isActive={currentPage === i}
+                                    className="cursor-pointer"
+                                  >
+                                    {i}
+                                  </PaginationLink>
+                                </PaginationItem>
+                              );
+                            }
+                          } else {
+                            // Show ellipsis for many pages
+                            // Always show first page
+                            pages.push(
+                              <PaginationItem key={1}>
+                                <PaginationLink
+                                  onClick={() => {
+                                    setCurrentPage(1);
+                                    setSelectedIndex(-1);
+                                  }}
+                                  isActive={currentPage === 1}
+                                  className="cursor-pointer"
+                                >
+                                  1
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                            
+                            // Show ellipsis if current page is far from start
+                            if (currentPage > 3) {
+                              pages.push(
+                                <PaginationItem key="ellipsis-start">
+                                  <PaginationEllipsis />
+                                </PaginationItem>
+                              );
+                            }
+                            
+                            // Show pages around current page
+                            const start = Math.max(2, currentPage - 1);
+                            const end = Math.min(totalPages - 1, currentPage + 1);
+                            
+                            for (let i = start; i <= end; i++) {
+                              pages.push(
+                                <PaginationItem key={i}>
+                                  <PaginationLink
+                                    onClick={() => {
+                                      setCurrentPage(i);
+                                      setSelectedIndex(-1);
+                                    }}
+                                    isActive={currentPage === i}
+                                    className="cursor-pointer"
+                                  >
+                                    {i}
+                                  </PaginationLink>
+                                </PaginationItem>
+                              );
+                            }
+                            
+                            // Show ellipsis if current page is far from end
+                            if (currentPage < totalPages - 2) {
+                              pages.push(
+                                <PaginationItem key="ellipsis-end">
+                                  <PaginationEllipsis />
+                                </PaginationItem>
+                              );
+                            }
+                            
+                            // Always show last page
+                            if (totalPages > 1) {
+                              pages.push(
+                                <PaginationItem key={totalPages}>
+                                  <PaginationLink
+                                    onClick={() => {
+                                      setCurrentPage(totalPages);
+                                      setSelectedIndex(-1);
+                                    }}
+                                    isActive={currentPage === totalPages}
+                                    className="cursor-pointer"
+                                  >
+                                    {totalPages}
+                                  </PaginationLink>
+                                </PaginationItem>
+                              );
+                            }
+                          }
+                          
+                          return pages;
+                        })()}
+                        
+                        <PaginationItem>
+                          <PaginationNext 
+                            onClick={() => {
+                              if (currentPage < totalPages) {
+                                setCurrentPage(currentPage + 1);
+                                // Reset keyboard navigation selection
+                                setSelectedIndex(-1);
+                              }
+                            }}
+                            className={currentPage >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

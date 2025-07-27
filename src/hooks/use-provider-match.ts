@@ -23,7 +23,7 @@ export function useProviderMatch() {
   const [matchError, setMatchError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Fetch all providers for matching with improved error handling and logging
+  // Fetch all providers for matching using optimized materialized view
   const {
     data: providers,
     isLoading: providersLoading,
@@ -32,43 +32,86 @@ export function useProviderMatch() {
   } = useQuery({
     queryKey: ['providers', 'for-matching'],
     queryFn: async (): Promise<Provider[]> => {
-      console.log('Fetching providers from database...');
+      console.log('Fetching providers from optimized cache...');
       
       try {
-        const { data, error } = await supabase
-          .from('providers')
-          .select('*')
-          .order('rating', { ascending: false });
-
-        if (error) {
-          console.error('Database error fetching providers:', error);
-          throw new Error(`Failed to fetch providers: ${error.message}`);
-        }
-
-        if (!data) {
-          console.warn('No provider data returned from database');
-          return [];
-        }
-
-        console.log(`Successfully fetched ${data.length} providers from database`);
+        // Try to use the materialized view first for better performance
+        let data, error;
         
-        // Transform database providers to Provider objects with proper type handling
-        return data.map((dbProvider: DatabaseProvider) => ({
-          ...dbProvider,
-          // Ensure arrays are properly initialized
-          specialties: dbProvider.specialties || [],
-          accepted_insurance: dbProvider.accepted_insurance || [],
-          in_network_plans: dbProvider.in_network_plans || [],
-        }));
+        try {
+          const cacheResult = await supabase
+            .from('provider_match_cache')
+            .select('*')
+            .order('rating_score', { ascending: false })
+            .order('availability_score', { ascending: false });
+            
+          data = cacheResult.data;
+          error = cacheResult.error;
+          
+          if (!error && data) {
+            console.log(`Successfully fetched ${data.length} providers from cache`);
+            
+            // Transform cached provider data with pre-calculated scores
+            return data.map((cachedProvider: any) => ({
+              ...cachedProvider,
+              // Ensure arrays are properly initialized
+              specialties: cachedProvider.specialties || [],
+              accepted_insurance: cachedProvider.accepted_insurance || [],
+              in_network_plans: cachedProvider.in_network_plans || [],
+              // Include pre-calculated scores for faster matching
+              _cached_availability_score: cachedProvider.availability_score,
+              _cached_rating_score: cachedProvider.rating_score,
+            }));
+          }
+        } catch (cacheError) {
+          console.warn('Materialized view not available, falling back to providers table');
+          error = cacheError;
+        }
+        
+        // Fallback to regular providers table if cache fails
+        if (error || !data) {
+          console.log('Using fallback providers table query...');
+          const fallbackResult = await supabase
+            .from('providers')
+            .select('*')
+            .order('rating', { ascending: false })
+            .order('name', { ascending: true });
+
+          if (fallbackResult.error) {
+            console.error('Database error fetching providers:', fallbackResult.error);
+            throw new Error(`Failed to fetch providers: ${fallbackResult.error.message}`);
+          }
+
+          if (!fallbackResult.data) {
+            console.warn('No provider data returned from database');
+            return [];
+          }
+
+          console.log(`Successfully fetched ${fallbackResult.data.length} providers from database`);
+          
+          // Transform database providers to Provider objects with proper type handling
+          return fallbackResult.data.map((dbProvider: DatabaseProvider) => ({
+            ...dbProvider,
+            // Ensure arrays are properly initialized
+            specialties: dbProvider.specialties || [],
+            accepted_insurance: dbProvider.accepted_insurance || [],
+            in_network_plans: dbProvider.in_network_plans || [],
+          }));
+        }
+
+        return [];
       } catch (err) {
         console.error('Error in provider fetch:', err);
         throw err;
       }
     },
-    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes (reduced from 10)
-    gcTime: 15 * 60 * 1000, // Keep in cache for 15 minutes (reduced from 30)
+    staleTime: 10 * 60 * 1000, // Consider data fresh for 10 minutes (providers change less frequently)
+    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
     retry: 3, // Retry failed requests up to 3 times
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+    refetchOnWindowFocus: false, // Providers don't change as frequently
+    refetchInterval: 15 * 60 * 1000, // Background refetch every 15 minutes
+    refetchIntervalInBackground: false, // Don't refetch providers in background to save resources
   });
 
   /**
@@ -93,36 +136,63 @@ export function useProviderMatch() {
       console.log(`Finding matches for patient ${patient.id} with service type: ${serviceType || patient.required_followup}`);
 
       try {
-        // If providers aren't loaded yet, try to fetch them directly from the database
+        // If providers aren't loaded yet, try to fetch them directly with optimization
         if (!providers || providers.length === 0) {
-          console.log('No cached providers available, fetching directly from database');
-          const { data: dbProviders, error } = await supabase
-            .from('providers')
-            .select('*')
-            .order('rating', { ascending: false });
+          console.log('No cached providers available, fetching directly with optimization');
+          
+          // Try materialized view first, then fallback to regular table
+          let dbProviders, error;
+          
+          try {
+            const cacheResult = await supabase
+              .from('provider_match_cache')
+              .select('*')
+              .order('rating_score', { ascending: false });
+              
+            if (!cacheResult.error && cacheResult.data) {
+              dbProviders = cacheResult.data.map((cachedProvider: any) => ({
+                ...cachedProvider,
+                specialties: cachedProvider.specialties || [],
+                accepted_insurance: cachedProvider.accepted_insurance || [],
+                in_network_plans: cachedProvider.in_network_plans || [],
+                _cached_availability_score: cachedProvider.availability_score,
+                _cached_rating_score: cachedProvider.rating_score,
+              }));
+              console.log(`Successfully fetched ${dbProviders.length} providers from cache`);
+            } else {
+              throw new Error('Cache not available');
+            }
+          } catch (cacheError) {
+            console.log('Cache unavailable, using regular providers table');
+            const fallbackResult = await supabase
+              .from('providers')
+              .select('*')
+              .order('rating', { ascending: false });
+              
+            error = fallbackResult.error;
+            if (error) {
+              console.error('Error fetching providers from database:', error);
+              throw new Error(`Database error: ${error.message}`);
+            }
             
-          if (error) {
-            console.error('Error fetching providers from database:', error);
-            throw new Error(`Database error: ${error.message}`);
+            if (!fallbackResult.data || fallbackResult.data.length === 0) {
+              console.error('No providers found in database');
+              throw new Error('No providers available for matching in the database');
+            }
+            
+            console.log(`Successfully fetched ${fallbackResult.data.length} providers directly from database`);
+            
+            // Use the directly fetched providers
+            dbProviders = fallbackResult.data.map((dbProvider: DatabaseProvider) => ({
+              ...dbProvider,
+              specialties: dbProvider.specialties || [],
+              accepted_insurance: dbProvider.accepted_insurance || [],
+              in_network_plans: dbProvider.in_network_plans || [],
+            }));
           }
-          
-          if (!dbProviders || dbProviders.length === 0) {
-            console.error('No providers found in database');
-            throw new Error('No providers available for matching in the database');
-          }
-          
-          console.log(`Successfully fetched ${dbProviders.length} providers directly from database`);
-          
-          // Use the directly fetched providers
-          const directProviders = dbProviders.map((dbProvider: DatabaseProvider) => ({
-            ...dbProvider,
-            specialties: dbProvider.specialties || [],
-            accepted_insurance: dbProvider.accepted_insurance || [],
-            in_network_plans: dbProvider.in_network_plans || [],
-          }));
           
           // Continue with the matching process using directly fetched providers
-          return processProviderMatching(directProviders, patient, serviceType, limit);
+          return processProviderMatching(dbProviders, patient, serviceType, limit);
         }
         
         // If we have cached providers, use them
@@ -159,92 +229,174 @@ export function useProviderMatch() {
   ): Promise<ProviderMatch[]> => {
     console.log(`Processing provider matching with ${providerList.length} providers`);
     
-    // Step 1: Filter providers by service type if specified (specialty matching)
-    let filteredProviders = providerList;
-    if (serviceType) {
-      const { hasSpecialtyMatch } = await import('@/lib/provider-matching');
-      
-      console.log(`Filtering providers by service type: ${serviceType}`);
-      
-      // Use enhanced specialty matching
-      filteredProviders = providerList.filter(provider => {
-        // If serviceType is provided, use it for matching
-        if (serviceType) {
-          return hasSpecialtyMatch(provider, serviceType);
-        }
+    try {
+      // Try optimized geographic search first if patient has location data
+      if (patient.address) {
+        console.log('Attempting optimized geographic provider search');
         
-        // Otherwise use patient's required followup
-        return hasSpecialtyMatch(provider, patient.required_followup);
-      });
+        // Parse patient address to get coordinates (simplified - in production would use geocoding service)
+        // For now, use mock coordinates based on address
+        const patientCoords = getMockCoordinatesFromAddress(patient.address);
+        
+        if (patientCoords) {
+          const { findProvidersWithinDistance } = await import('@/lib/query-utils');
+          
+          try {
+            const geoProviders = await findProvidersWithinDistance({
+              patientLat: patientCoords.lat,
+              patientLng: patientCoords.lng,
+              maxDistance: 25, // 25 mile radius
+              minRating: 3.0,
+              providerType: serviceType,
+              insurance: patient.insurance,
+              limit: limit * 2 // Get more candidates for better matching
+            });
+            
+            if (geoProviders.length > 0) {
+              console.log(`Found ${geoProviders.length} providers using optimized geographic search`);
+              
+              // Use the enhanced provider matching algorithm on the geographic results
+              const { findMatchingProviders } = await import('@/lib/provider-matching');
+              const matches = findMatchingProviders(geoProviders, patient, limit);
+              
+              console.log(`Optimized geographic matching found ${matches.length} matches`);
+              
+              if (matches.length > 0) {
+                setCurrentMatches(matches);
+                toast({
+                  title: 'Provider Matches Found',
+                  description: `Found ${matches.length} nearby provider${matches.length === 1 ? '' : 's'} for ${patient.name}.`,
+                });
+                return matches;
+              }
+            }
+          } catch (geoError) {
+            console.warn('Optimized geographic search failed, falling back to standard matching:', geoError);
+          }
+        }
+      }
       
-      console.log(`Found ${filteredProviders.length} providers matching service type`);
-    }
-
-    if (filteredProviders.length === 0) {
-      console.warn(`No providers found for service type: ${serviceType || patient.required_followup}`);
-      throw new Error(`No providers found for service type: ${serviceType || patient.required_followup}`);
-    }
-
-    // Step 2: Filter by insurance network (insurance network matching)
-    const { isInNetwork } = await import('@/lib/provider-matching');
-    
-    console.log(`Filtering providers by insurance: ${patient.insurance}`);
-    
-    // Separate in-network and out-of-network providers
-    const inNetworkProviders = filteredProviders.filter(provider => 
-      isInNetwork(provider, patient.insurance)
-    );
-    
-    console.log(`Found ${inNetworkProviders.length} in-network providers`);
-    
-    // If we have enough in-network providers, prioritize them
-    // Otherwise, include out-of-network providers to meet the limit
-    let candidateProviders = inNetworkProviders;
-    if (inNetworkProviders.length < limit) {
-      console.log(`Not enough in-network providers, including out-of-network options`);
+      // Fallback to standard provider matching process
+      console.log('Using standard provider matching process');
       
-      const outOfNetworkProviders = filteredProviders.filter(provider => 
-        !isInNetwork(provider, patient.insurance)
+      // Step 1: Filter providers by service type if specified (specialty matching)
+      let filteredProviders = providerList;
+      if (serviceType) {
+        const { hasSpecialtyMatch } = await import('@/lib/provider-matching');
+        
+        console.log(`Filtering providers by service type: ${serviceType}`);
+        
+        // Use enhanced specialty matching
+        filteredProviders = providerList.filter(provider => {
+          // If serviceType is provided, use it for matching
+          if (serviceType) {
+            return hasSpecialtyMatch(provider, serviceType);
+          }
+          
+          // Otherwise use patient's required followup
+          return hasSpecialtyMatch(provider, patient.required_followup);
+        });
+        
+        console.log(`Found ${filteredProviders.length} providers matching service type`);
+      }
+
+      if (filteredProviders.length === 0) {
+        console.warn(`No providers found for service type: ${serviceType || patient.required_followup}`);
+        throw new Error(`No providers found for service type: ${serviceType || patient.required_followup}`);
+      }
+
+      // Step 2: Filter by insurance network (insurance network matching)
+      const { isInNetwork } = await import('@/lib/provider-matching');
+      
+      console.log(`Filtering providers by insurance: ${patient.insurance}`);
+      
+      // Separate in-network and out-of-network providers
+      const inNetworkProviders = filteredProviders.filter(provider => 
+        isInNetwork(provider, patient.insurance)
       );
       
-      console.log(`Found ${outOfNetworkProviders.length} out-of-network providers`);
+      console.log(`Found ${inNetworkProviders.length} in-network providers`);
       
-      // Add out-of-network providers to fill the gap
-      candidateProviders = [
-        ...inNetworkProviders,
-        ...outOfNetworkProviders
-      ];
-    }
+      // If we have enough in-network providers, prioritize them
+      // Otherwise, include out-of-network providers to meet the limit
+      let candidateProviders = inNetworkProviders;
+      if (inNetworkProviders.length < limit) {
+        console.log(`Not enough in-network providers, including out-of-network options`);
+        
+        const outOfNetworkProviders = filteredProviders.filter(provider => 
+          !isInNetwork(provider, patient.insurance)
+        );
+        
+        console.log(`Found ${outOfNetworkProviders.length} out-of-network providers`);
+        
+        // Add out-of-network providers to fill the gap
+        candidateProviders = [
+          ...inNetworkProviders,
+          ...outOfNetworkProviders
+        ];
+      }
 
-    // Step 3: Use the enhanced provider matching algorithm with all criteria
-    console.log(`Running provider matching algorithm with ${candidateProviders.length} candidates`);
+      // Step 3: Use the enhanced provider matching algorithm with all criteria
+      console.log(`Running provider matching algorithm with ${candidateProviders.length} candidates`);
+      
+      // Import the matching function
+      const { findMatchingProviders } = await import('@/lib/provider-matching');
+      
+      // Run the matching algorithm
+      const matches = findMatchingProviders(candidateProviders, patient, limit);
+      
+      console.log(`Found ${matches.length} provider matches`);
+      
+      // Store the matches in state
+      setCurrentMatches(matches);
+      
+      // Show success toast notification
+      if (matches.length > 0) {
+        toast({
+          title: 'Provider Matches Found',
+          description: `Found ${matches.length} matching provider${matches.length === 1 ? '' : 's'} for ${patient.name}.`,
+        });
+      } else {
+        toast({
+          title: 'No Provider Matches',
+          description: 'No providers found matching the criteria. Try expanding your search.',
+          variant: 'destructive',
+        });
+      }
+      
+      return matches;
+    } catch (error) {
+      console.error('Provider matching process failed:', error);
+      throw error;
+    }
+  };
+  
+  // Helper function to get mock coordinates from address (in production, would use geocoding API)
+  const getMockCoordinatesFromAddress = (address: string): { lat: number; lng: number } | null => {
+    // Simple mock geocoding based on common city names
+    const cityCoords: Record<string, { lat: number; lng: number }> = {
+      'boston': { lat: 42.3601, lng: -71.0589 },
+      'cambridge': { lat: 42.3736, lng: -71.1097 },
+      'somerville': { lat: 42.3876, lng: -71.0995 },
+      'newton': { lat: 42.3370, lng: -71.2092 },
+      'brookline': { lat: 42.3317, lng: -71.1211 },
+      'quincy': { lat: 42.2529, lng: -71.0023 },
+      'lynn': { lat: 42.4668, lng: -70.9495 },
+      'lowell': { lat: 42.6334, lng: -71.3162 },
+      'worcester': { lat: 42.2626, lng: -71.8023 },
+      'springfield': { lat: 42.1015, lng: -72.5898 },
+    };
     
-    // Import the matching function
-    const { findMatchingProviders } = await import('@/lib/provider-matching');
+    const lowerAddress = address.toLowerCase();
     
-    // Run the matching algorithm
-    const matches = findMatchingProviders(candidateProviders, patient, limit);
-    
-    console.log(`Found ${matches.length} provider matches`);
-    
-    // Store the matches in state
-    setCurrentMatches(matches);
-    
-    // Show success toast notification
-    if (matches.length > 0) {
-      toast({
-        title: 'Provider Matches Found',
-        description: `Found ${matches.length} matching provider${matches.length === 1 ? '' : 's'} for ${patient.name}.`,
-      });
-    } else {
-      toast({
-        title: 'No Provider Matches',
-        description: 'No providers found matching the criteria. Try expanding your search.',
-        variant: 'destructive',
-      });
+    for (const [city, coords] of Object.entries(cityCoords)) {
+      if (lowerAddress.includes(city)) {
+        return coords;
+      }
     }
     
-    return matches;
+    // Default to Boston area if no match found
+    return { lat: 42.3601, lng: -71.0589 };
   };
 
   /**

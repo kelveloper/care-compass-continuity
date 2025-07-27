@@ -517,10 +517,14 @@ export function calculateProviderMatch(
   const distanceScore = calculateProximityScore(distance);
   
   // Factor 4: Availability - sooner is better (15% weight)
-  const availabilityScore = calculateAvailabilityScore(provider.availability_next);
+  // Use cached score if available for better performance
+  const availabilityScore = (provider as any)._cached_availability_score || 
+                           calculateAvailabilityScore(provider.availability_next);
   
   // Factor 5: Provider rating (10% weight)
-  const ratingScore = Math.min(100, Math.max(0, (provider.rating / 5) * 100)); // Convert 5-star to 100-point scale
+  // Use cached score if available for better performance
+  const ratingScore = (provider as any)._cached_rating_score || 
+                     Math.min(100, Math.max(0, (provider.rating / 5) * 100)); // Convert 5-star to 100-point scale
   
   // Calculate weighted total score using multi-factor scoring algorithm
   const matchScore = Math.round(

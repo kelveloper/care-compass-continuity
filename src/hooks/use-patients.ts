@@ -46,107 +46,185 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
   // Add debounce ref for real-time updates
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Set up real-time subscription
-  useEffect(() => {
-    // Only set up subscription if real-time is enabled
-    if (!realtimeEnabled) return;
-    
-    console.log('Setting up real-time subscription for patients');
-    
-    // Subscribe to changes in the patients table
-    const subscription = supabase
-      .channel('patients-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'patients' 
-        }, 
-        async (payload) => {
-          console.log('Real-time update received:', payload);
-          
-          // Clear existing timeout if any
-          if (debounceTimeoutRef.current) {
-            clearTimeout(debounceTimeoutRef.current);
-          }
-          
-          // Add a debounced delay to batch multiple rapid updates
-          debounceTimeoutRef.current = setTimeout(() => {
-            // Invalidate the patients query to trigger a refetch
-            queryClient.invalidateQueries({ queryKey: ['patients', filters] });
-          }, 500); // 500ms delay to batch updates
-        }
-      )
-      .subscribe();
-    
-    // Clean up subscription when component unmounts or realtimeEnabled changes
-    return () => {
-      console.log('Cleaning up real-time subscription for patients');
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-      subscription.unsubscribe();
-    };
-  }, [queryClient, realtimeEnabled, filters]);
+  // Note: Real-time subscriptions are now handled by useBackgroundSync hook
+  // This provides centralized real-time updates for better performance
   
   return useQuery({
     queryKey: ['patients', filters],
     queryFn: async (): Promise<Patient[]> => {
       console.log('usePatients: Fetching patients with filters:', filters);
       try {
-        let query = supabase
-          .from('patients')
-          .select('*');
+        // Try optimized query functions first, then fallback to regular queries
+        let data, error;
         
-        // Apply filters if provided
-        if (filters) {
-          console.log('usePatients: Applying filters:', filters);
-          // Filter by risk level
-          if (filters.riskLevel) {
-            query = query.eq('leakage_risk_level', filters.riskLevel);
+        try {
+          // Use optimized high-risk patient function if filtering by high risk
+          if (filters?.riskLevel === 'high' || (filters?.minRiskScore && filters.minRiskScore >= 70)) {
+            console.log('usePatients: Using optimized high-risk patient function');
+            const { getHighRiskPatients } = await import('@/lib/query-utils');
+            
+            const optimizedPatients = await getHighRiskPatients({
+              riskThreshold: filters.minRiskScore || 70,
+              limit: filters.limit || 100,
+              offset: 0
+            });
+            
+            if (optimizedPatients.length > 0) {
+              console.log('usePatients: Successfully fetched', optimizedPatients.length, 'high-risk patients from optimized function');
+              return optimizedPatients;
+            }
           }
           
-          // Filter by referral status
-          if (filters.referralStatus) {
-            query = query.eq('referral_status', filters.referralStatus);
+          // Use optimized search function if search term is provided
+          if (filters?.search) {
+            console.log('usePatients: Using optimized full-text search');
+            const { performFullTextSearch } = await import('@/lib/query-utils');
+            
+            const searchResults = await performFullTextSearch({
+              searchTerm: filters.search,
+              searchType: 'patients',
+              limit: filters.limit || 100
+            });
+            
+            if (searchResults.patients.length > 0) {
+              console.log('usePatients: Successfully fetched', searchResults.patients.length, 'patients from optimized search');
+              return searchResults.patients;
+            }
           }
           
-          // Filter by insurance
-          if (filters.insurance) {
-            query = query.eq('insurance', filters.insurance);
+          // Use optimized dashboard view for general queries
+          let query = supabase
+            .from('dashboard_patients')
+            .select('*');
+          
+          // Apply filters if provided with optimized queries
+          if (filters) {
+            console.log('usePatients: Applying optimized filters:', filters);
+            
+            // Filter by risk level (uses index)
+            if (filters.riskLevel) {
+              query = query.eq('leakage_risk_level', filters.riskLevel);
+            }
+            
+            // Filter by referral status (uses index)
+            if (filters.referralStatus) {
+              query = query.eq('referral_status', filters.referralStatus);
+            }
+            
+            // Filter by insurance (uses index)
+            if (filters.insurance) {
+              query = query.eq('insurance', filters.insurance);
+            }
+            
+            // Filter by diagnosis using full-text search (uses GIN index)
+            if (filters.diagnosis) {
+              query = query.textSearch('diagnosis', filters.diagnosis, {
+                type: 'websearch',
+                config: 'english'
+              });
+            }
+            
+            // Add age filter if provided
+            if (filters.minAge) {
+              query = query.gte('age', filters.minAge);
+            }
+            if (filters.maxAge) {
+              query = query.lte('age', filters.maxAge);
+            }
+            
+            // Add days since discharge filter if provided
+            if (filters.maxDaysSinceDischarge) {
+              query = query.lte('days_since_discharge', filters.maxDaysSinceDischarge);
+            }
           }
           
-          // Filter by diagnosis (partial match)
-          if (filters.diagnosis) {
-            query = query.ilike('diagnosis', `%${filters.diagnosis}%`);
-          }
+          // Order by risk score (uses covering index for better performance)
+          query = query.order('leakage_risk_score', { ascending: false })
+                      .order('created_at', { ascending: false });
           
-          // Search across multiple fields
-          if (filters.search) {
-            const searchTerm = `%${filters.search}%`;
-            query = query.or(`name.ilike.${searchTerm},diagnosis.ilike.${searchTerm},required_followup.ilike.${searchTerm}`);
+          // Limit results for better performance (add pagination support)
+          const limit = filters?.limit || 100;
+          query = query.limit(limit);
+          
+          const result = await query;
+          data = result.data;
+          error = result.error;
+          
+          if (!error && data) {
+            console.log('usePatients: Successfully fetched', data.length, 'patients from optimized view');
+            const enhancedPatients = enhancePatients(data);
+            console.log('usePatients: Enhanced patients:', enhancedPatients.length);
+            return enhancedPatients;
           }
+        } catch (optimizedError) {
+          console.warn('usePatients: Optimized queries not available, falling back to regular table');
+          error = optimizedError;
         }
         
-        // Order by created_at
-        query = query.order('created_at', { ascending: false });
-        
-        const { data, error } = await query;
+        // Fallback to regular patients table if optimized view fails
+        if (error || !data) {
+          console.log('usePatients: Using fallback patients table query');
+          let fallbackQuery = supabase
+            .from('patients')
+            .select('*');
+          
+          // Apply filters if provided
+          if (filters) {
+            console.log('usePatients: Applying fallback filters:', filters);
+            // Filter by risk level
+            if (filters.riskLevel) {
+              fallbackQuery = fallbackQuery.eq('leakage_risk_level', filters.riskLevel);
+            }
+            
+            // Filter by referral status
+            if (filters.referralStatus) {
+              fallbackQuery = fallbackQuery.eq('referral_status', filters.referralStatus);
+            }
+            
+            // Filter by insurance
+            if (filters.insurance) {
+              fallbackQuery = fallbackQuery.eq('insurance', filters.insurance);
+            }
+            
+            // Filter by diagnosis (partial match)
+            if (filters.diagnosis) {
+              fallbackQuery = fallbackQuery.ilike('diagnosis', `%${filters.diagnosis}%`);
+            }
+            
+            // Search across multiple fields
+            if (filters.search) {
+              const searchTerm = `%${filters.search}%`;
+              fallbackQuery = fallbackQuery.or(`name.ilike.${searchTerm},diagnosis.ilike.${searchTerm},required_followup.ilike.${searchTerm}`);
+            }
+          }
+          
+          // Order by created_at for fallback
+          fallbackQuery = fallbackQuery.order('leakage_risk_score', { ascending: false })
+                                      .order('created_at', { ascending: false });
+          
+          // Limit results
+          const limit = filters?.limit || 100;
+          fallbackQuery = fallbackQuery.limit(limit);
+          
+          const fallbackResult = await fallbackQuery;
 
-        if (error) {
-          console.error('usePatients: Database error:', error);
-          throw new Error(`Failed to fetch patients: ${error.message}`);
+          if (fallbackResult.error) {
+            console.error('usePatients: Fallback database error:', fallbackResult.error);
+            throw new Error(`Failed to fetch patients: ${fallbackResult.error.message}`);
+          }
+
+          if (!fallbackResult.data) {
+            console.log('usePatients: No data returned from fallback database');
+            return [];
+          }
+
+          console.log('usePatients: Successfully fetched', fallbackResult.data.length, 'patients from fallback');
+          const enhancedPatients = enhancePatients(fallbackResult.data);
+          console.log('usePatients: Enhanced patients:', enhancedPatients.length);
+          return enhancedPatients;
         }
 
-        if (!data) {
-          console.log('usePatients: No data returned from database');
-          return [];
-        }
-
-        console.log('usePatients: Successfully fetched', data.length, 'patients');
-        const enhancedPatients = enhancePatients(data);
-        console.log('usePatients: Enhanced patients:', enhancedPatients.length);
-        return enhancedPatients;
+        return [];
       } catch (error) {
         // Enhanced error handling with more context
         console.error('Error fetching patients:', error);
@@ -157,12 +235,14 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
         }
       }
     },
-    staleTime: 30 * 1000, // Consider data fresh for 30 seconds (reduced from 5 minutes)
-    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    staleTime: 2 * 60 * 1000, // Consider data fresh for 2 minutes (optimized for patient data)
+    gcTime: 15 * 60 * 1000, // Keep in cache for 15 minutes
     retry: 3, // Retry failed requests up to 3 times
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
-    refetchOnWindowFocus: false, // Prevent refetch when window regains focus
-    refetchOnMount: false, // Only refetch if data is stale
+    refetchOnWindowFocus: true, // Refetch when window regains focus for fresh patient data
+    refetchOnMount: 'always', // Always refetch on mount for critical patient data
+    refetchInterval: 5 * 60 * 1000, // Background refetch every 5 minutes
+    refetchIntervalInBackground: true, // Continue background refetch even when tab is not active
     placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
     onError: (error) => {
       // Show toast notification for network/database errors
@@ -231,34 +311,8 @@ export function usePatient(patientId: string | undefined) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
-  // Set up real-time subscription for a specific patient
-  useEffect(() => {
-    if (!patientId) return;
-    
-    // Subscribe to changes for this specific patient
-    const subscription = supabase
-      .channel(`patient-${patientId}-changes`)
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'patients',
-          filter: `id=eq.${patientId}`
-        }, 
-        async (payload) => {
-          console.log(`Real-time update received for patient ${patientId}:`, payload);
-          
-          // Invalidate the specific patient query to trigger a refetch
-          queryClient.invalidateQueries({ queryKey: ['patient', patientId] });
-        }
-      )
-      .subscribe();
-    
-    // Clean up subscription when component unmounts or patientId changes
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [patientId, queryClient]);
+  // Note: Real-time subscriptions are now handled by useBackgroundSync hook
+  // This provides centralized real-time updates for better performance
   
   return useQuery({
     queryKey: ['patient', patientId],
@@ -318,8 +372,8 @@ export function usePatient(patientId: string | undefined) {
       }
     },
     enabled: !!patientId, // Only run query if patientId is provided
-    staleTime: 30 * 1000, // Consider data fresh for 30 seconds
-    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    staleTime: 2 * 60 * 1000, // Consider data fresh for 2 minutes
+    gcTime: 15 * 60 * 1000, // Keep in cache for 15 minutes
     retry: (failureCount, error) => {
       // Don't retry for "not found" errors
       if (error.message.includes('not found')) {
@@ -329,7 +383,9 @@ export function usePatient(patientId: string | undefined) {
       return failureCount < 3;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
-    refetchOnWindowFocus: false, // Prevent refetch when window regains focus
+    refetchOnWindowFocus: true, // Refetch when window regains focus for fresh patient data
+    refetchInterval: 5 * 60 * 1000, // Background refetch every 5 minutes for individual patients
+    refetchIntervalInBackground: true, // Continue background refetch even when tab is not active
     placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
     onError: (error) => {
       // Only show toast for non-"not found" errors

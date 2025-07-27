@@ -86,6 +86,13 @@ export interface PatientFilters {
   insurance?: string;
   diagnosis?: string;
   search?: string;
+  minAge?: number;
+  maxAge?: number;
+  maxDaysSinceDischarge?: number;
+  minRiskScore?: number;
+  maxRiskScore?: number;
+  limit?: number;
+  offset?: number;
 }
 
 export interface ProviderFilters {
