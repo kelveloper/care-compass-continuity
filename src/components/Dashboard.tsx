@@ -2,11 +2,12 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { UserCircle, Clock, AlertCircle, CheckCircle2, Loader2, RefreshCw, Search, Filter, Wifi, X } from "lucide-react";
+import { UserCircle, Clock, AlertCircle, CheckCircle2, Loader2, RefreshCw, Search, Filter, Wifi, X, History } from "lucide-react";
 import { PatientDetailContainer } from "./PatientDetailContainer";
 import { NotificationCenter } from "./NotificationCenter";
 import { usePatients } from "@/hooks/use-patients";
 import { useOptimisticListUpdates } from "@/hooks/use-optimistic-updates";
+import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { Patient, PatientFilters } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,6 +23,7 @@ import {
   PaginationPrevious,
   PaginationEllipsis
 } from "@/components/ui/pagination";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const getRiskBadgeVariant = (level: string) => {
   switch (level) {
@@ -56,7 +58,6 @@ export const Dashboard = () => {
   console.log('Dashboard: Component rendered');
   
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>("");
   const [riskFilter, setRiskFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [realtimeActive, setRealtimeActive] = useState<boolean>(true);
@@ -66,18 +67,30 @@ export const Dashboard = () => {
   const prevPatientsRef = useRef<Patient[] | undefined>();
   const { toast } = useToast();
   
+  // Use the new debounced search hook
+  const {
+    searchTerm,
+    debouncedSearchTerm,
+    isSearching,
+    searchHistory,
+    setSearchTerm,
+    clearSearch,
+    setFromHistory,
+    clearHistory,
+  } = useDebouncedSearch('', 300);
+  
 
   
   // Use optimistic list updates for better UX
   const { searchOptimistic, sortOptimistic, filterOptimistic } = useOptimisticListUpdates();
   
-  // Create filters object for server-side filtering
+  // Create filters object for server-side filtering using debounced search
   const filters: PatientFilters = useMemo(() => {
     const result: PatientFilters = {};
     
-    // Only add filters that are active
-    if (searchQuery) {
-      result.search = searchQuery;
+    // Only add filters that are active - use debounced search term
+    if (debouncedSearchTerm.trim()) {
+      result.search = debouncedSearchTerm.trim();
     }
     
     if (riskFilter !== "all") {
@@ -89,19 +102,7 @@ export const Dashboard = () => {
     }
     
     return result;
-  }, [searchQuery, riskFilter, statusFilter]);
-  
-  // Use debounced search query to prevent excessive API calls
-  const [debouncedFilters, setDebouncedFilters] = useState<PatientFilters>(filters);
-  
-  // Debounce filter changes to prevent excessive API calls
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedFilters(filters);
-    }, 300); // 300ms debounce delay
-    
-    return () => clearTimeout(timer);
-  }, [filters]);
+  }, [debouncedSearchTerm, riskFilter, statusFilter]);
   
   const { 
     data: patients, 
@@ -112,7 +113,7 @@ export const Dashboard = () => {
     isError,
     isRefetching,
     failureCount
-  } = usePatients(debouncedFilters, realtimeActive);
+  } = usePatients(filters, realtimeActive);
   
   console.log('Dashboard: Patient data state:', {
     patients: patients?.length || 0,
@@ -176,14 +177,14 @@ export const Dashboard = () => {
     if (!patients) return [];
     
     // If we have a search query and are still loading, show optimistic results
-    if (searchQuery && isFetching && patients.length > 0) {
-      const optimisticResults = searchOptimistic(searchQuery);
+    if (searchTerm && (isFetching || isSearching) && patients.length > 0) {
+      const optimisticResults = searchOptimistic(searchTerm);
       return optimisticResults;
     }
     
     // Otherwise use the server-filtered results
     return patients;
-  }, [patients, searchQuery, isFetching, searchOptimistic]);
+  }, [patients, searchTerm, isFetching, isSearching, searchOptimistic]);
 
   // Pagination logic
   const totalPatients = sortedPatients.length;
@@ -195,7 +196,7 @@ export const Dashboard = () => {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, riskFilter, statusFilter]);
+  }, [debouncedSearchTerm, riskFilter, statusFilter]);
 
   // Reset to first page if current page is beyond total pages
   useEffect(() => {
@@ -243,8 +244,8 @@ export const Dashboard = () => {
         const isInputFocused = activeElement?.tagName === 'INPUT' || 
                               activeElement?.tagName === 'TEXTAREA';
         
-        if (!isInputFocused && (searchQuery || riskFilter !== "all" || statusFilter !== "all")) {
-          setSearchQuery("");
+        if (!isInputFocused && (searchTerm || riskFilter !== "all" || statusFilter !== "all")) {
+          clearSearch();
           setRiskFilter("all");
           setStatusFilter("all");
           toast({
@@ -292,7 +293,7 @@ export const Dashboard = () => {
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [searchQuery, riskFilter, statusFilter, currentPage, totalPages, toast]);
+  }, [searchTerm, riskFilter, statusFilter, currentPage, totalPages, toast, clearSearch]);
 
   if (selectedPatient) {
     console.log('Dashboard: Navigating to patient detail for:', selectedPatient.id, selectedPatient.name);
@@ -428,30 +429,84 @@ export const Dashboard = () => {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search patients by name, diagnosis, or service... (Press / to focus)"
-                className="pl-8 text-sm sm:text-base"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-20 text-sm sm:text-base"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 disabled={isLoading || isError}
                 onKeyDown={(e) => {
-                  if (e.key === 'Escape' && searchQuery) {
-                    setSearchQuery("");
+                  if (e.key === 'Escape' && searchTerm) {
+                    clearSearch();
                   } else if (e.key === 'ArrowDown' && sortedPatients.length > 0) {
                     e.preventDefault();
                     focusItem(0);
                   }
                 }}
               />
-              {searchQuery && !isLoading && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-1 top-1 h-8 w-8 p-0"
-                  onClick={() => setSearchQuery("")}
-                >
-                  <span className="sr-only">Clear search</span>
-                  <X className="h-4 w-4" />
-                </Button>
+              
+              {/* Search status indicator */}
+              {isSearching && (
+                <div className="absolute right-12 top-2.5">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
               )}
+              
+              {/* Search history and clear buttons */}
+              <div className="absolute right-1 top-1 flex items-center gap-1">
+                {searchHistory.length > 0 && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        disabled={isLoading || isError}
+                      >
+                        <span className="sr-only">Search history</span>
+                        <History className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="end">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between px-2 py-1">
+                          <span className="text-sm font-medium">Recent searches</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={clearHistory}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                        {searchHistory.map((term, index) => (
+                          <Button
+                            key={index}
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8 px-2 text-sm"
+                            onClick={() => setFromHistory(term)}
+                          >
+                            <Search className="h-3 w-3 mr-2 text-muted-foreground" />
+                            {term}
+                          </Button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
+                
+                {searchTerm && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={clearSearch}
+                  >
+                    <span className="sr-only">Clear search</span>
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="flex gap-2 flex-wrap">
               <Select 
@@ -490,12 +545,17 @@ export const Dashboard = () => {
           </div>
           
           {/* Filter Status Indicator */}
-          {!isLoading && !error && (searchQuery || riskFilter !== "all" || statusFilter !== "all") && (
+          {!isLoading && !error && (searchTerm || riskFilter !== "all" || statusFilter !== "all") && (
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 p-3 sm:p-2 bg-muted/30 rounded-md">
               <div className="flex items-center gap-2 flex-1">
                 <Filter className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-xs sm:text-sm text-muted-foreground">
                   Showing {totalPatients} {totalPatients === 1 ? 'patient' : 'patients'} matching your filters
+                  {isSearching && (
+                    <span className="ml-1 text-primary">
+                      • Searching...
+                    </span>
+                  )}
                   {totalPages > 1 && (
                     <span className="ml-1">
                       (Page {currentPage} of {totalPages})
@@ -508,7 +568,7 @@ export const Dashboard = () => {
                 size="sm" 
                 className="h-7 sm:h-7 px-2 text-xs sm:text-sm self-start sm:self-center"
                 onClick={() => {
-                  setSearchQuery("");
+                  clearSearch();
                   setRiskFilter("all");
                   setStatusFilter("all");
                   toast({
@@ -659,7 +719,7 @@ export const Dashboard = () => {
                 <UserCircle className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground" />
                 <div className="text-center">
                   <h3 className="font-medium text-foreground text-sm sm:text-base">No patients found</h3>
-                  {(searchQuery || riskFilter !== "all" || statusFilter !== "all") ? (
+                  {(searchTerm || riskFilter !== "all" || statusFilter !== "all") ? (
                     <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                       No patients match your current filters. Try adjusting your search criteria.
                     </p>
@@ -670,10 +730,10 @@ export const Dashboard = () => {
                   )}
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  {(searchQuery || riskFilter !== "all" || statusFilter !== "all") && (
+                  {(searchTerm || riskFilter !== "all" || statusFilter !== "all") && (
                     <Button 
                       onClick={() => {
-                        setSearchQuery("");
+                        clearSearch();
                         setRiskFilter("all");
                         setStatusFilter("all");
                         toast({
