@@ -7,10 +7,10 @@ import { PatientDetailContainer } from "./PatientDetailContainer";
 import { NotificationCenter } from "./NotificationCenter";
 import { NetworkStatusIndicator } from "./NetworkStatusIndicator";
 import { OfflineStatusPanel } from "./OfflineIndicator";
-import { usePatients } from "@/hooks/use-patients";
-import { useOptimisticListUpdates } from "@/hooks/use-optimistic-updates";
-import { useDebouncedSearch } from "@/hooks/use-debounced-search";
-import { useBackgroundSync } from "@/hooks/use-background-sync";
+import { usePatientsSimple as usePatients } from "@/hooks/use-patients-simple";
+// import { useOptimisticListUpdates } from "@/hooks/use-optimistic-updates";
+// import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+// import { useBackgroundSync } from "@/hooks/use-background-sync";
 import { Patient, PatientFilters } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -70,22 +70,26 @@ export const Dashboard = () => {
   const prevPatientsRef = useRef<Patient[] | undefined>();
   const { toast } = useToast();
   
-  // Use the new debounced search hook
-  const {
-    searchTerm,
-    debouncedSearchTerm,
-    isSearching,
-    searchHistory,
-    setSearchTerm,
-    clearSearch,
-    setFromHistory,
-    clearHistory,
-  } = useDebouncedSearch('', 300);
+  // Simplified search state
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>('');
+  const [isSearching, setIsSearching] = useState<boolean>(false);
   
-
+  // Debounce search term
+  useEffect(() => {
+    setIsSearching(true);
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setIsSearching(false);
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
   
-  // Use optimistic list updates for better UX
-  const { searchOptimistic, sortOptimistic, filterOptimistic } = useOptimisticListUpdates();
+  const clearSearch = () => {
+    setSearchTerm('');
+    setDebouncedSearchTerm('');
+  };
   
   // Create filters object for server-side filtering using debounced search
   const filters: PatientFilters = useMemo(() => {
@@ -119,16 +123,9 @@ export const Dashboard = () => {
   } = usePatients(filters, realtimeActive);
   
   // Initialize background sync for real-time updates and network handling
-  const backgroundSync = useBackgroundSync();
+  // const backgroundSync = useBackgroundSync();
   
-  console.log('Dashboard: Patient data state:', {
-    patients: Array.isArray(patients) ? patients.length : `Not array: ${typeof patients}`,
-    isLoading,
-    error: error?.message,
-    isFetching,
-    isError,
-    failureCount
-  });
+  // Moved console.log after variable declarations to avoid temporal dead zone error
   
   // Show success toast when data loads successfully for the first time
   useEffect(() => {
@@ -181,18 +178,20 @@ export const Dashboard = () => {
 
   // Use optimistic updates for immediate feedback while server-side filtering is in progress
   const sortedPatients = useMemo(() => {
-    // Ensure patients is always an array
+    // Ensure patients is always an array - this is critical to prevent forEach errors
     const patientsArray = Array.isArray(patients) ? patients : [];
     
-    // If we have a search query and are still loading, show optimistic results
-    if (searchTerm && (isFetching || isSearching) && patientsArray.length > 0) {
-      const optimisticResults = searchOptimistic(searchTerm);
-      return Array.isArray(optimisticResults) ? optimisticResults : [];
-    }
+    // If we have a search query and are still loading, show current results
+    // Removed optimistic updates for debugging
+    // if (searchTerm && (isFetching || isSearching) && patientsArray.length > 0) {
+    //   const optimisticResults = searchOptimistic(searchTerm);
+    //   return Array.isArray(optimisticResults) ? optimisticResults : [];
+    // }
     
     // Otherwise use the server-filtered results
     return patientsArray;
-  }, [patients, searchTerm, isFetching, isSearching, searchOptimistic]);
+  }, [patients, searchTerm, isFetching, isSearching]);
+
 
   // Pagination logic
   const totalPatients = sortedPatients.length;
@@ -200,6 +199,19 @@ export const Dashboard = () => {
   const startIndex = (currentPage - 1) * patientsPerPage;
   const endIndex = startIndex + patientsPerPage;
   const paginatedPatients = sortedPatients.slice(startIndex, endIndex);
+
+  // Debug logging after all variables are properly declared
+  console.log('Dashboard: Patient data state:', {
+    patients: Array.isArray(patients) ? patients.length : `Not array: ${typeof patients}`,
+    isLoading,
+    error: error?.message,
+    isFetching,
+    isError,
+    failureCount,
+    totalPatients,
+    sortedPatients: Array.isArray(sortedPatients) ? sortedPatients.length : `Not array: ${typeof sortedPatients}`,
+    paginatedPatients: Array.isArray(paginatedPatients) ? paginatedPatients.length : `Not array: ${typeof paginatedPatients}`
+  });
 
   // Reset to first page when filters change
   useEffect(() => {
@@ -464,51 +476,8 @@ export const Dashboard = () => {
                 </div>
               )}
               
-              {/* Search history and clear buttons */}
+              {/* Clear search button */}
               <div className="absolute right-1 top-1 flex items-center gap-1">
-                {searchHistory.length > 0 && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        disabled={isLoading || isError}
-                      >
-                        <span className="sr-only">Search history</span>
-                        <History className="h-4 w-4" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 p-2" align="end">
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between px-2 py-1">
-                          <span className="text-sm font-medium">Recent searches</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs"
-                            onClick={clearHistory}
-                          >
-                            Clear
-                          </Button>
-                        </div>
-                        {searchHistory.map((term, index) => (
-                          <Button
-                            key={index}
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8 px-2 text-sm"
-                            onClick={() => setFromHistory(term)}
-                          >
-                            <Search className="h-3 w-3 mr-2 text-muted-foreground" />
-                            {term}
-                          </Button>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                )}
-                
                 {searchTerm && (
                   <Button
                     variant="ghost"
