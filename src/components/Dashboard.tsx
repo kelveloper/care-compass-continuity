@@ -122,7 +122,7 @@ export const Dashboard = () => {
   const backgroundSync = useBackgroundSync();
   
   console.log('Dashboard: Patient data state:', {
-    patients: patients?.length || 0,
+    patients: Array.isArray(patients) ? patients.length : `Not array: ${typeof patients}`,
     isLoading,
     error: error?.message,
     isFetching,
@@ -180,16 +180,17 @@ export const Dashboard = () => {
 
   // Use optimistic updates for immediate feedback while server-side filtering is in progress
   const sortedPatients = useMemo(() => {
-    if (!patients) return [];
+    // Ensure patients is always an array
+    const patientsArray = Array.isArray(patients) ? patients : [];
     
     // If we have a search query and are still loading, show optimistic results
-    if (searchTerm && (isFetching || isSearching) && patients.length > 0) {
+    if (searchTerm && (isFetching || isSearching) && patientsArray.length > 0) {
       const optimisticResults = searchOptimistic(searchTerm);
-      return optimisticResults;
+      return Array.isArray(optimisticResults) ? optimisticResults : [];
     }
     
     // Otherwise use the server-filtered results
-    return patients;
+    return patientsArray;
   }, [patients, searchTerm, isFetching, isSearching, searchOptimistic]);
 
   // Pagination logic
