@@ -87,7 +87,16 @@ export function ErrorDebugPanel() {
                             {error.type.toUpperCase()}
                           </Badge>
                           <span className="text-muted-foreground">
-                            {error.timestamp.toLocaleTimeString()}
+                            {(() => {
+                              try {
+                                if (error.timestamp instanceof Date) {
+                                  return error.timestamp.toLocaleTimeString();
+                                }
+                                return new Date(error.timestamp).toLocaleTimeString();
+                              } catch (e) {
+                                return 'Invalid timestamp';
+                              }
+                            })()}
                           </span>
                         </div>
                         
