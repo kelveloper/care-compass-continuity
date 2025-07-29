@@ -105,7 +105,7 @@
 
 #### Task 3.1: Dashboard Updates
 
-- [x] Replace mock data in Dashboard component with `usePatients` hook
+- [ ] Replace mock data in Dashboard component with `usePatients` hook
 - [x] Implement real-time patient list sorting by risk score
 - [x] Add loading and error states
 - [x] Implement patient search/filtering functionality
@@ -179,7 +179,7 @@
 
 - [x] Comprehensive error boundary implementation
 - [x] Handle network failures gracefully
-- [ ] Add retry mechanisms for failed requests
+- [x] Add retry mechanisms for failed requests
 - [x] Implement offline state detection
 
 ### Phase 6: Deployment & Demo Prep (Day 6)

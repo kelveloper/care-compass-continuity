@@ -174,6 +174,7 @@ ALTER TABLE providers ALTER COLUMN rating SET STATISTICS 1000;
 ALTER TABLE providers ALTER COLUMN type SET STATISTICS 1000;
 
 -- 13. Create optimized view for dashboard queries
+-- Note: current_referral_id will be added in a later migration
 CREATE OR REPLACE VIEW dashboard_patients AS
 SELECT 
   id,
@@ -187,7 +188,6 @@ SELECT
   leakage_risk_score,
   leakage_risk_level,
   referral_status,
-  current_referral_id,
   created_at,
   updated_at,
   -- Pre-calculate age for sorting/filtering

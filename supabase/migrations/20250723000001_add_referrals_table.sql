@@ -60,3 +60,27 @@ EXECUTE FUNCTION add_referral_history();
 
 -- Update the patients table to add a foreign key to the most recent referral
 ALTER TABLE patients ADD COLUMN current_referral_id UUID REFERENCES referrals(id) ON DELETE SET NULL;
+
+-- Update the dashboard_patients view to include the new current_referral_id column
+CREATE OR REPLACE VIEW dashboard_patients AS
+SELECT 
+  id,
+  name,
+  date_of_birth,
+  diagnosis,
+  discharge_date,
+  required_followup,
+  insurance,
+  address,
+  leakage_risk_score,
+  leakage_risk_level,
+  referral_status,
+  current_referral_id,
+  created_at,
+  updated_at,
+  -- Pre-calculate age for sorting/filtering
+  EXTRACT(YEAR FROM AGE(CURRENT_DATE, date_of_birth)) as age,
+  -- Pre-calculate days since discharge
+  EXTRACT(DAY FROM (CURRENT_DATE - discharge_date)) as days_since_discharge
+FROM patients
+ORDER BY leakage_risk_score DESC, created_at DESC;

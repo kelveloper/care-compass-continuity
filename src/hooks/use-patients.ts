@@ -107,57 +107,47 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
             }
           }
           
-          // Use optimized dashboard view for general queries
+          // Start with regular patients table since dashboard_patients view may not exist
           let query = supabase
-            .from('dashboard_patients')
+            .from('patients')
             .select('*');
           
-          // Apply filters if provided with optimized queries
+          // Apply filters if provided
           if (filters) {
-            console.log('usePatients: Applying optimized filters:', filters);
+            console.log('usePatients: Applying filters:', filters);
             
-            // Filter by risk level (uses index)
+            // Filter by risk level
             if (filters.riskLevel) {
               query = query.eq('leakage_risk_level', filters.riskLevel);
             }
             
-            // Filter by referral status (uses index)
+            // Filter by referral status
             if (filters.referralStatus) {
               query = query.eq('referral_status', filters.referralStatus);
             }
             
-            // Filter by insurance (uses index)
+            // Filter by insurance
             if (filters.insurance) {
               query = query.eq('insurance', filters.insurance);
             }
             
-            // Filter by diagnosis using full-text search (uses GIN index)
+            // Filter by diagnosis (partial match since full-text search may not be available)
             if (filters.diagnosis) {
-              query = query.textSearch('diagnosis', filters.diagnosis, {
-                type: 'websearch',
-                config: 'english'
-              });
+              query = query.ilike('diagnosis', `%${filters.diagnosis}%`);
             }
             
-            // Add age filter if provided
-            if (filters.minAge) {
-              query = query.gte('age', filters.minAge);
-            }
-            if (filters.maxAge) {
-              query = query.lte('age', filters.maxAge);
-            }
-            
-            // Add days since discharge filter if provided
-            if (filters.maxDaysSinceDischarge) {
-              query = query.lte('days_since_discharge', filters.maxDaysSinceDischarge);
+            // Search across multiple fields
+            if (filters.search) {
+              const searchTerm = `%${filters.search}%`;
+              query = query.or(`name.ilike.${searchTerm},diagnosis.ilike.${searchTerm},required_followup.ilike.${searchTerm}`);
             }
           }
           
-          // Order by risk score (uses covering index for better performance)
+          // Order by risk score (highest first) then by created date
           query = query.order('leakage_risk_score', { ascending: false })
                       .order('created_at', { ascending: false });
           
-          // Limit results for better performance (add pagination support)
+          // Limit results for better performance
           const limit = filters?.limit || 100;
           query = query.limit(limit);
           
@@ -166,80 +156,31 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
           error = result.error;
           
           if (!error && data) {
-            console.log('usePatients: Successfully fetched', data.length, 'patients from optimized view');
+            console.log('usePatients: Successfully fetched', data.length, 'patients from patients table');
+            console.log('usePatients: Sample raw patient:', data[0]);
             const enhancedPatients = enhancePatients(data);
             console.log('usePatients: Enhanced patients:', enhancedPatients.length);
+            console.log('usePatients: Sample enhanced patient:', enhancedPatients[0]);
             return enhancedPatients;
           }
-        } catch (optimizedError) {
-          console.warn('usePatients: Optimized queries not available, falling back to regular table');
-          error = optimizedError;
+        } catch (queryError) {
+          console.error('usePatients: Database query error:', queryError);
+          throw handleSupabaseError(queryError);
         }
         
-        // Fallback to regular patients table if optimized view fails
-        if (error || !data) {
-          console.log('usePatients: Using fallback patients table query');
-          let fallbackQuery = supabase
-            .from('patients')
-            .select('*');
-          
-          // Apply filters if provided
-          if (filters) {
-            console.log('usePatients: Applying fallback filters:', filters);
-            // Filter by risk level
-            if (filters.riskLevel) {
-              fallbackQuery = fallbackQuery.eq('leakage_risk_level', filters.riskLevel);
-            }
-            
-            // Filter by referral status
-            if (filters.referralStatus) {
-              fallbackQuery = fallbackQuery.eq('referral_status', filters.referralStatus);
-            }
-            
-            // Filter by insurance
-            if (filters.insurance) {
-              fallbackQuery = fallbackQuery.eq('insurance', filters.insurance);
-            }
-            
-            // Filter by diagnosis (partial match)
-            if (filters.diagnosis) {
-              fallbackQuery = fallbackQuery.ilike('diagnosis', `%${filters.diagnosis}%`);
-            }
-            
-            // Search across multiple fields
-            if (filters.search) {
-              const searchTerm = `%${filters.search}%`;
-              fallbackQuery = fallbackQuery.or(`name.ilike.${searchTerm},diagnosis.ilike.${searchTerm},required_followup.ilike.${searchTerm}`);
-            }
-          }
-          
-          // Order by created_at for fallback
-          fallbackQuery = fallbackQuery.order('leakage_risk_score', { ascending: false })
-                                      .order('created_at', { ascending: false });
-          
-          // Limit results
-          const limit = filters?.limit || 100;
-          fallbackQuery = fallbackQuery.limit(limit);
-          
-          const fallbackResult = await fallbackQuery;
-
-          if (fallbackResult.error) {
-            console.error('usePatients: Fallback database error:', fallbackResult.error);
-            throw handleSupabaseError(fallbackResult.error);
-          }
-
-          if (!fallbackResult.data) {
-            console.log('usePatients: No data returned from fallback database');
-            return [];
-          }
-
-          console.log('usePatients: Successfully fetched', fallbackResult.data.length, 'patients from fallback');
-          const enhancedPatients = enhancePatients(fallbackResult.data);
-          console.log('usePatients: Enhanced patients:', enhancedPatients.length);
-          return enhancedPatients;
+        // Handle case where query succeeded but returned no data
+        if (!data) {
+          console.log('usePatients: No data returned from database');
+          return [];
         }
 
-            return [];
+        // If we get here, there was an error
+        if (error) {
+          console.error('usePatients: Database error:', error);
+          throw handleSupabaseError(error);
+        }
+
+        return [];
           },
           {
             context: 'fetchPatients',
@@ -314,8 +255,10 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
       }
     },
     refetchIntervalInBackground: networkStatus.getNetworkQuality() !== 'poor', // Don't background refetch on poor connections
-    placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
+    placeholderData: (previousData) => previousData || [], // Keep previous data while fetching new data to prevent flashing
     onError: (error) => {
+      console.error('usePatients: Query error:', error);
+      
       // Use the error handler for consistent error handling
       handleError(error, { 
         operation: 'fetchPatients',
