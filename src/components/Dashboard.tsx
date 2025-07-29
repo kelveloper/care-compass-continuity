@@ -132,7 +132,7 @@ export const Dashboard = () => {
   
   // Show success toast when data loads successfully for the first time
   useEffect(() => {
-    if (patients && patients.length > 0 && !isLoading && !error && !prevPatientsRef.current) {
+    if (Array.isArray(patients) && patients.length > 0 && !isLoading && !error && !prevPatientsRef.current) {
       toast({
         title: 'Dashboard Loaded',
         description: `Successfully loaded ${patients.length} patient${patients.length === 1 ? '' : 's'}.`,
@@ -142,7 +142,8 @@ export const Dashboard = () => {
   
   // Detect changes in patient data to highlight recently updated patients
   useEffect(() => {
-    if (!patients || !prevPatientsRef.current) {
+    // Ensure both current and previous patients are arrays
+    if (!Array.isArray(patients) || !Array.isArray(prevPatientsRef.current)) {
       prevPatientsRef.current = patients;
       return;
     }
