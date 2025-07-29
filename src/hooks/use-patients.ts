@@ -5,6 +5,10 @@ import { enhancePatientDataSync } from '@/lib/risk-calculator';
 import type { Database } from '@/integrations/supabase/types';
 import { useEffect, useRef } from 'react';
 import { useToast } from './use-toast';
+import { useErrorHandler } from './use-error-handler';
+import { handleSupabaseError, handleApiCallWithRetry } from '@/lib/api-error-handler';
+import { useNetworkStatus } from './use-network-status';
+import { useOfflineAwareOperation } from './use-offline-state';
 
 type DatabasePatient = Database['public']['Tables']['patients']['Row'];
 
@@ -42,6 +46,12 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { handleError } = useErrorHandler({ 
+    context: 'usePatients',
+    showToast: false // We'll handle toasts manually for better UX
+  });
+  const networkStatus = useNetworkStatus();
+  const { executeOfflineAware } = useOfflineAwareOperation();
   
   // Add debounce ref for real-time updates
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -53,9 +63,14 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
     queryKey: ['patients', filters],
     queryFn: async (): Promise<Patient[]> => {
       console.log('usePatients: Fetching patients with filters:', filters);
-      try {
-        // Try optimized query functions first, then fallback to regular queries
-        let data, error;
+      
+      // Use offline-aware operation with fallback to cached data
+      const result = await executeOfflineAware(
+        // Online operation
+        async () => handleApiCallWithRetry(
+          async () => {
+          // Try optimized query functions first, then fallback to regular queries
+          let data, error;
         
         try {
           // Use optimized high-risk patient function if filtering by high risk
@@ -210,7 +225,7 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
 
           if (fallbackResult.error) {
             console.error('usePatients: Fallback database error:', fallbackResult.error);
-            throw new Error(`Failed to fetch patients: ${fallbackResult.error.message}`);
+            throw handleSupabaseError(fallbackResult.error);
           }
 
           if (!fallbackResult.data) {
@@ -224,31 +239,93 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
           return enhancedPatients;
         }
 
-        return [];
-      } catch (error) {
-        // Enhanced error handling with more context
-        console.error('Error fetching patients:', error);
-        if (error instanceof Error) {
-          throw new Error(`Database connection error: ${error.message}`);
-        } else {
-          throw new Error('Unknown error occurred while fetching patients');
+            return [];
+          },
+          {
+            context: 'fetchPatients',
+            maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+            retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+            networkAware: true,
+            onRetry: (attempt, error) => {
+              console.log(`usePatients: Retry attempt ${attempt} after error:`, error.message);
+            }
+          }
+        ),
+        {
+          feature: 'view-patients',
+          fallback: async () => {
+            // Offline fallback - return cached data if available
+            console.log('usePatients: Using offline fallback');
+            const cachedData = queryClient.getQueryData(['patients', filters]);
+            if (cachedData) {
+              console.log('usePatients: Returning cached data');
+              return cachedData as Patient[];
+            }
+            
+            // If no cached data, return empty array
+            console.log('usePatients: No cached data available offline');
+            return [];
+          },
+          operationName: 'fetch patients',
+          showOfflineMessage: false, // We'll show this in the UI component
         }
-      }
+      );
+
+      return result || [];
     },
     staleTime: 2 * 60 * 1000, // Consider data fresh for 2 minutes (optimized for patient data)
     gcTime: 15 * 60 * 1000, // Keep in cache for 15 minutes
-    retry: 3, // Retry failed requests up to 3 times
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+    retry: (failureCount, error) => {
+      // Don't retry if offline
+      if (!networkStatus.isOnline) return false;
+      
+      // Reduce retries on poor connections
+      const maxRetries = networkStatus.getNetworkQuality() === 'poor' ? 1 : 3;
+      
+      // Don't retry for certain error types
+      if (error && typeof error === 'object' && 'message' in error) {
+        const errorMessage = (error as Error).message.toLowerCase();
+        if (errorMessage.includes('not found') || 
+            errorMessage.includes('unauthorized') || 
+            errorMessage.includes('forbidden')) {
+          return false;
+        }
+      }
+      
+      return failureCount < maxRetries;
+    },
+    retryDelay: (attemptIndex) => {
+      // Longer delays on poor connections
+      const baseDelay = networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000;
+      return Math.min(baseDelay * 2 ** attemptIndex, 30000);
+    },
     refetchOnWindowFocus: true, // Refetch when window regains focus for fresh patient data
     refetchOnMount: 'always', // Always refetch on mount for critical patient data
-    refetchInterval: 5 * 60 * 1000, // Background refetch every 5 minutes
-    refetchIntervalInBackground: true, // Continue background refetch even when tab is not active
+    refetchInterval: () => {
+      // Adjust refetch interval based on network quality
+      if (!networkStatus.isOnline) return false;
+      
+      const quality = networkStatus.getNetworkQuality();
+      switch (quality) {
+        case 'good': return 5 * 60 * 1000; // 5 minutes
+        case 'fair': return 10 * 60 * 1000; // 10 minutes
+        case 'poor': return 15 * 60 * 1000; // 15 minutes
+        default: return false;
+      }
+    },
+    refetchIntervalInBackground: networkStatus.getNetworkQuality() !== 'poor', // Don't background refetch on poor connections
     placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
     onError: (error) => {
-      // Show toast notification for network/database errors
+      // Use the error handler for consistent error handling
+      handleError(error, { 
+        operation: 'fetchPatients',
+        filters: JSON.stringify(filters)
+      });
+      
+      // Show specific toast for patients loading
       toast({
         title: 'Failed to Load Patients',
-        description: error.message || 'There was a problem connecting to the database. Please check your connection and try again.',
+        description: 'There was a problem loading patient data. Please check your connection and try again.',
         variant: 'destructive',
       });
     },
@@ -310,6 +387,11 @@ export function usePatient(patientId: string | undefined) {
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { handleError } = useErrorHandler({ 
+    context: 'usePatient',
+    showToast: false // We'll handle toasts manually for better UX
+  });
+  const networkStatus = useNetworkStatus();
   
   // Note: Real-time subscriptions are now handled by useBackgroundSync hook
   // This provides centralized real-time updates for better performance
@@ -323,76 +405,106 @@ export function usePatient(patientId: string | undefined) {
       }
 
       console.log('usePatient: Fetching patient with ID:', patientId);
-      try {
-        const { data, error } = await supabase
-          .from('patients')
-          .select('*')
-          .eq('id', patientId)
-          .single();
+      
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const { data, error } = await supabase
+            .from('patients')
+            .select('*')
+            .eq('id', patientId)
+            .single();
 
-        if (error) {
-          console.error('usePatient: Database error:', error);
-          // Handle "not found" errors gracefully
-          if (error.code === 'PGRST116') {
-            throw new Error(`Patient with ID ${patientId} not found`);
+          if (error) {
+            console.error('usePatient: Database error:', error);
+            throw handleSupabaseError(error);
           }
-          throw new Error(`Failed to fetch patient: ${error.message}`);
-        }
 
-        if (!data) {
-          console.log('usePatient: No data returned for patient:', patientId);
-          return null;
-        }
-
-        console.log('usePatient: Successfully fetched patient:', data.id, data.name);
-
-        // Transform database patient to enhanced Patient object with risk calculations
-        const patient: Patient = {
-          ...data,
-          leakageRisk: {
-            score: data.leakage_risk_score,
-            level: data.leakage_risk_level,
-          },
-        };
-
-        // Enhance with computed fields (age, days since discharge, detailed risk factors)
-        return enhancePatientDataSync(patient);
-      } catch (error) {
-        // Enhanced error handling with more context
-        console.error(`Error fetching patient ${patientId}:`, error);
-        if (error instanceof Error) {
-          // Preserve the original error message for "not found" errors
-          if (error.message.includes('not found')) {
-            throw error;
+          if (!data) {
+            console.log('usePatient: No data returned for patient:', patientId);
+            return null;
           }
-          throw new Error(`Database connection error: ${error.message}`);
-        } else {
-          throw new Error('Unknown error occurred while fetching patient data');
+
+          console.log('usePatient: Successfully fetched patient:', data.id, data.name);
+
+          // Transform database patient to enhanced Patient object with risk calculations
+          const patient: Patient = {
+            ...data,
+            leakageRisk: {
+              score: data.leakage_risk_score,
+              level: data.leakage_risk_level,
+            },
+          };
+
+          // Enhance with computed fields (age, days since discharge, detailed risk factors)
+          return enhancePatientDataSync(patient);
+        },
+        {
+          context: 'fetchPatient',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`usePatient: Retry attempt ${attempt} for patient ${patientId} after error:`, error.message);
+          }
         }
+      );
+
+      if (result.error) {
+        console.error(`Error fetching patient ${patientId}:`, result.error);
+        throw handleSupabaseError(result.error);
       }
+
+      return result.data;
     },
     enabled: !!patientId, // Only run query if patientId is provided
     staleTime: 2 * 60 * 1000, // Consider data fresh for 2 minutes
     gcTime: 15 * 60 * 1000, // Keep in cache for 15 minutes
     retry: (failureCount, error) => {
+      // Don't retry if offline
+      if (!networkStatus.isOnline) return false;
+      
       // Don't retry for "not found" errors
       if (error.message.includes('not found')) {
         return false;
       }
-      // Retry up to 3 times for other errors
-      return failureCount < 3;
+      
+      // Reduce retries on poor connections
+      const maxRetries = networkStatus.getNetworkQuality() === 'poor' ? 1 : 3;
+      return failureCount < maxRetries;
     },
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+    retryDelay: (attemptIndex) => {
+      // Longer delays on poor connections
+      const baseDelay = networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000;
+      return Math.min(baseDelay * 2 ** attemptIndex, 30000);
+    },
     refetchOnWindowFocus: true, // Refetch when window regains focus for fresh patient data
-    refetchInterval: 5 * 60 * 1000, // Background refetch every 5 minutes for individual patients
-    refetchIntervalInBackground: true, // Continue background refetch even when tab is not active
+    refetchInterval: () => {
+      // Adjust refetch interval based on network quality
+      if (!networkStatus.isOnline) return false;
+      
+      const quality = networkStatus.getNetworkQuality();
+      switch (quality) {
+        case 'good': return 5 * 60 * 1000; // 5 minutes
+        case 'fair': return 10 * 60 * 1000; // 10 minutes
+        case 'poor': return false; // No background refetch on poor connections
+        default: return false;
+      }
+    },
+    refetchIntervalInBackground: networkStatus.getNetworkQuality() === 'good', // Only on good connections
     placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
     onError: (error) => {
+      // Use the error handler for consistent error handling
+      handleError(error, { 
+        operation: 'fetchPatient',
+        patientId
+      });
+      
       // Only show toast for non-"not found" errors
       if (!error.message.includes('not found')) {
         toast({
           title: 'Failed to Load Patient',
-          description: error.message || 'There was a problem loading patient data. Please try again.',
+          description: 'There was a problem loading patient data. Please try again.',
           variant: 'destructive',
         });
       }

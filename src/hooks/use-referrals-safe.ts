@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Referral, ReferralHistory, ReferralInsert, ReferralUpdate } from '@/integrations/supabase/types';
 import { Patient, Provider } from '@/types';
 import { useToast } from './use-toast';
+import { handleApiCallWithRetry, handleSupabaseError } from '@/lib/api-error-handler';
+import { useNetworkStatus } from './use-network-status';
 
 export interface UseReferralsReturn {
   /** Current referral data */
@@ -34,16 +36,29 @@ export interface UseReferralsReturn {
 }
 
 /**
- * Check if a table exists in the database
+ * Check if a table exists in the database with retry mechanism
  */
 async function checkTableExists(tableName: string): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from(tableName)
-      .select('id')
-      .limit(1);
+    const result = await handleApiCallWithRetry(
+      async () => {
+        const { error } = await supabase
+          .from(tableName)
+          .select('id')
+          .limit(1);
+        
+        return !error || error.code !== '42P01';
+      },
+      {
+        context: 'checkTableExists',
+        maxRetries: 2,
+        retryDelay: 500,
+        networkAware: true,
+        showToast: false,
+      }
+    );
     
-    return !error || error.code !== '42P01';
+    return result.data ?? false;
   } catch (error) {
     return false;
   }
@@ -58,6 +73,7 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
   const { toast } = useToast();
+  const networkStatus = useNetworkStatus();
 
   /**
    * Create a new referral
@@ -77,42 +93,68 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         throw new Error('Referrals table does not exist. Please run the SQL script to create it.');
       }
 
-      // Create the referral
-      const newReferral: ReferralInsert = {
-        patient_id: patientId,
-        provider_id: providerId,
-        service_type: serviceType,
-        status: 'pending',
-      };
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          // Create the referral
+          const newReferral: ReferralInsert = {
+            patient_id: patientId,
+            provider_id: providerId,
+            service_type: serviceType,
+            status: 'pending',
+          };
 
-      const { data, error: insertError } = await supabase
-        .from('referrals')
-        .insert(newReferral)
-        .select()
-        .single();
+          const { data, error: insertError } = await supabase
+            .from('referrals')
+            .insert(newReferral)
+            .select()
+            .single();
 
-      if (insertError) {
-        throw new Error(`Failed to create referral: ${insertError.message}`);
+          if (insertError) {
+            throw handleSupabaseError(insertError);
+          }
+
+          if (!data) {
+            throw new Error('No data returned after creating referral');
+          }
+
+          // Update the patient's referral status and current_referral_id
+          const { error: updateError } = await supabase
+            .from('patients')
+            .update({
+              referral_status: 'sent',
+              current_referral_id: data.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', patientId);
+
+          if (updateError) {
+            console.error('Failed to update patient status:', updateError);
+            // Continue anyway since the referral was created
+          }
+
+          return data;
+        },
+        {
+          context: 'createReferral',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`createReferral: Retry attempt ${attempt} for patient ${patientId} after error:`, error.message);
+            toast({
+              title: 'Retrying Referral Creation...',
+              description: `Attempt ${attempt} to create referral.`,
+            });
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
-      if (!data) {
-        throw new Error('No data returned after creating referral');
-      }
-
-      // Update the patient's referral status and current_referral_id
-      const { error: updateError } = await supabase
-        .from('patients')
-        .update({
-          referral_status: 'sent',
-          current_referral_id: data.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', patientId);
-
-      if (updateError) {
-        console.error('Failed to update patient status:', updateError);
-        // Continue anyway since the referral was created
-      }
+      const data = result.data!;
 
       setReferral(data);
       toast({
@@ -153,78 +195,104 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         throw new Error('Referrals table does not exist. Please run the SQL script to create it.');
       }
 
-      // Get the current referral to check if status is actually changing
-      const { data: currentReferral, error: fetchError } = await supabase
-        .from('referrals')
-        .select('*')
-        .eq('id', referralId)
-        .single();
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          // Get the current referral to check if status is actually changing
+          const { data: currentReferral, error: fetchError } = await supabase
+            .from('referrals')
+            .select('*')
+            .eq('id', referralId)
+            .single();
 
-      if (fetchError) {
-        throw new Error(`Failed to fetch referral: ${fetchError.message}`);
-      }
+          if (fetchError) {
+            throw handleSupabaseError(fetchError);
+          }
 
-      if (!currentReferral) {
-        throw new Error('Referral not found');
-      }
+          if (!currentReferral) {
+            throw new Error('Referral not found');
+          }
 
-      // Only update if status is actually changing
-      if (currentReferral.status !== status) {
-        const update: ReferralUpdate = {
-          status,
-          updated_at: new Date().toISOString(),
-        };
-
-        if (notes) {
-          update.notes = notes;
-        }
-
-        const { data, error: updateError } = await supabase
-          .from('referrals')
-          .update(update)
-          .eq('id', referralId)
-          .select()
-          .single();
-
-        if (updateError) {
-          throw new Error(`Failed to update referral: ${updateError.message}`);
-        }
-
-        if (!data) {
-          throw new Error('No data returned after updating referral');
-        }
-
-        // Update the patient's referral status based on the referral status
-        const patientStatus = mapReferralStatusToPatientStatus(status);
-        
-        const { error: patientUpdateError } = await supabase
-          .from('patients')
-          .update({
-            referral_status: patientStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', data.patient_id);
-
-        if (patientUpdateError) {
-          console.error('Failed to update patient status:', patientUpdateError);
-          // Continue anyway since the referral was updated
-        }
-
-        // Check if the referral_history table exists
-        const historyTableExists = await checkTableExists('referral_history');
-        
-        // Add a manual history entry with the notes
-        if (notes && historyTableExists) {
-          await supabase
-            .from('referral_history')
-            .insert({
-              referral_id: referralId,
+          // Only update if status is actually changing
+          if (currentReferral.status !== status) {
+            const update: ReferralUpdate = {
               status,
-              notes,
-              created_by: 'Care Coordinator',
-            });
-        }
+              updated_at: new Date().toISOString(),
+            };
 
+            if (notes) {
+              update.notes = notes;
+            }
+
+            const { data, error: updateError } = await supabase
+              .from('referrals')
+              .update(update)
+              .eq('id', referralId)
+              .select()
+              .single();
+
+            if (updateError) {
+              throw handleSupabaseError(updateError);
+            }
+
+            if (!data) {
+              throw new Error('No data returned after updating referral');
+            }
+
+            // Update the patient's referral status based on the referral status
+            const patientStatus = mapReferralStatusToPatientStatus(status);
+            
+            const { error: patientUpdateError } = await supabase
+              .from('patients')
+              .update({
+                referral_status: patientStatus,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', data.patient_id);
+
+            if (patientUpdateError) {
+              console.error('Failed to update patient status:', patientUpdateError);
+              // Continue anyway since the referral was updated
+            }
+
+            // Check if the referral_history table exists
+            const historyTableExists = await checkTableExists('referral_history');
+            
+            // Add a manual history entry with the notes
+            if (notes && historyTableExists) {
+              await supabase
+                .from('referral_history')
+                .insert({
+                  referral_id: referralId,
+                  status,
+                  notes,
+                  created_by: 'Care Coordinator',
+                });
+            }
+
+            return { data, historyTableExists };
+          }
+          
+          return { data: currentReferral, historyTableExists: false, statusChanged: false };
+        },
+        {
+          context: 'updateReferralStatus',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`updateReferralStatus: Retry attempt ${attempt} for referral ${referralId} after error:`, error.message);
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      const { data, historyTableExists, statusChanged } = result.data!;
+      
+      if (statusChanged !== false) {
         setReferral(data);
         if (historyTableExists) {
           await refreshReferralHistory(referralId);
@@ -271,60 +339,82 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         throw new Error('Referrals table does not exist. Please run the SQL script to create it.');
       }
 
-      const update: ReferralUpdate = {
-        status: 'scheduled',
-        scheduled_date: scheduledDate,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (notes) {
-        update.notes = notes;
-      }
-
-      const { data, error: updateError } = await supabase
-        .from('referrals')
-        .update(update)
-        .eq('id', referralId)
-        .select()
-        .single();
-
-      if (updateError) {
-        throw new Error(`Failed to schedule referral: ${updateError.message}`);
-      }
-
-      if (!data) {
-        throw new Error('No data returned after scheduling referral');
-      }
-
-      // Update the patient's referral status
-      const { error: patientUpdateError } = await supabase
-        .from('patients')
-        .update({
-          referral_status: 'scheduled',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.patient_id);
-
-      if (patientUpdateError) {
-        console.error('Failed to update patient status:', patientUpdateError);
-      }
-
-      // Check if the referral_history table exists
-      const historyTableExists = await checkTableExists('referral_history');
-      
-      // Add a manual history entry with the scheduled date
-      if (historyTableExists) {
-        const historyNote = notes || `Appointment scheduled for ${new Date(scheduledDate).toLocaleDateString()}`;
-        await supabase
-          .from('referral_history')
-          .insert({
-            referral_id: referralId,
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const update: ReferralUpdate = {
             status: 'scheduled',
-            notes: historyNote,
-            created_by: 'Care Coordinator',
-          });
+            scheduled_date: scheduledDate,
+            updated_at: new Date().toISOString(),
+          };
+
+          if (notes) {
+            update.notes = notes;
+          }
+
+          const { data, error: updateError } = await supabase
+            .from('referrals')
+            .update(update)
+            .eq('id', referralId)
+            .select()
+            .single();
+
+          if (updateError) {
+            throw handleSupabaseError(updateError);
+          }
+
+          if (!data) {
+            throw new Error('No data returned after scheduling referral');
+          }
+
+          // Update the patient's referral status
+          const { error: patientUpdateError } = await supabase
+            .from('patients')
+            .update({
+              referral_status: 'scheduled',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', data.patient_id);
+
+          if (patientUpdateError) {
+            console.error('Failed to update patient status:', patientUpdateError);
+          }
+
+          // Check if the referral_history table exists
+          const historyTableExists = await checkTableExists('referral_history');
+          
+          // Add a manual history entry with the scheduled date
+          if (historyTableExists) {
+            const historyNote = notes || `Appointment scheduled for ${new Date(scheduledDate).toLocaleDateString()}`;
+            await supabase
+              .from('referral_history')
+              .insert({
+                referral_id: referralId,
+                status: 'scheduled',
+                notes: historyNote,
+                created_by: 'Care Coordinator',
+              });
+          }
+
+          return { data, historyTableExists };
+        },
+        {
+          context: 'scheduleReferral',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`scheduleReferral: Retry attempt ${attempt} for referral ${referralId} after error:`, error.message);
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
+      const { data, historyTableExists } = result.data!;
+      
       setReferral(data);
       if (historyTableExists) {
         await refreshReferralHistory(referralId);
@@ -367,60 +457,82 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         throw new Error('Referrals table does not exist. Please run the SQL script to create it.');
       }
 
-      const update: ReferralUpdate = {
-        status: 'completed',
-        completed_date: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      if (notes) {
-        update.notes = notes;
-      }
-
-      const { data, error: updateError } = await supabase
-        .from('referrals')
-        .update(update)
-        .eq('id', referralId)
-        .select()
-        .single();
-
-      if (updateError) {
-        throw new Error(`Failed to complete referral: ${updateError.message}`);
-      }
-
-      if (!data) {
-        throw new Error('No data returned after completing referral');
-      }
-
-      // Update the patient's referral status
-      const { error: patientUpdateError } = await supabase
-        .from('patients')
-        .update({
-          referral_status: 'completed',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.patient_id);
-
-      if (patientUpdateError) {
-        console.error('Failed to update patient status:', patientUpdateError);
-      }
-
-      // Check if the referral_history table exists
-      const historyTableExists = await checkTableExists('referral_history');
-      
-      // Add a manual history entry
-      if (historyTableExists) {
-        const historyNote = notes || 'Care completed';
-        await supabase
-          .from('referral_history')
-          .insert({
-            referral_id: referralId,
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const update: ReferralUpdate = {
             status: 'completed',
-            notes: historyNote,
-            created_by: 'Care Coordinator',
-          });
+            completed_date: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          if (notes) {
+            update.notes = notes;
+          }
+
+          const { data, error: updateError } = await supabase
+            .from('referrals')
+            .update(update)
+            .eq('id', referralId)
+            .select()
+            .single();
+
+          if (updateError) {
+            throw handleSupabaseError(updateError);
+          }
+
+          if (!data) {
+            throw new Error('No data returned after completing referral');
+          }
+
+          // Update the patient's referral status
+          const { error: patientUpdateError } = await supabase
+            .from('patients')
+            .update({
+              referral_status: 'completed',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', data.patient_id);
+
+          if (patientUpdateError) {
+            console.error('Failed to update patient status:', patientUpdateError);
+          }
+
+          // Check if the referral_history table exists
+          const historyTableExists = await checkTableExists('referral_history');
+          
+          // Add a manual history entry
+          if (historyTableExists) {
+            const historyNote = notes || 'Care completed';
+            await supabase
+              .from('referral_history')
+              .insert({
+                referral_id: referralId,
+                status: 'completed',
+                notes: historyNote,
+                created_by: 'Care Coordinator',
+              });
+          }
+
+          return { data, historyTableExists };
+        },
+        {
+          context: 'completeReferral',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`completeReferral: Retry attempt ${attempt} for referral ${referralId} after error:`, error.message);
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
+      const { data, historyTableExists } = result.data!;
+      
       setReferral(data);
       if (historyTableExists) {
         await refreshReferralHistory(referralId);
@@ -463,60 +575,82 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         throw new Error('Referrals table does not exist. Please run the SQL script to create it.');
       }
 
-      const update: ReferralUpdate = {
-        status: 'cancelled',
-        updated_at: new Date().toISOString(),
-      };
-
-      if (notes) {
-        update.notes = notes;
-      }
-
-      const { data, error: updateError } = await supabase
-        .from('referrals')
-        .update(update)
-        .eq('id', referralId)
-        .select()
-        .single();
-
-      if (updateError) {
-        throw new Error(`Failed to cancel referral: ${updateError.message}`);
-      }
-
-      if (!data) {
-        throw new Error('No data returned after cancelling referral');
-      }
-
-      // Update the patient's referral status back to needed
-      const { error: patientUpdateError } = await supabase
-        .from('patients')
-        .update({
-          referral_status: 'needed',
-          current_referral_id: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.patient_id);
-
-      if (patientUpdateError) {
-        console.error('Failed to update patient status:', patientUpdateError);
-      }
-
-      // Check if the referral_history table exists
-      const historyTableExists = await checkTableExists('referral_history');
-      
-      // Add a manual history entry
-      if (historyTableExists) {
-        const historyNote = notes || 'Referral cancelled';
-        await supabase
-          .from('referral_history')
-          .insert({
-            referral_id: referralId,
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const update: ReferralUpdate = {
             status: 'cancelled',
-            notes: historyNote,
-            created_by: 'Care Coordinator',
-          });
+            updated_at: new Date().toISOString(),
+          };
+
+          if (notes) {
+            update.notes = notes;
+          }
+
+          const { data, error: updateError } = await supabase
+            .from('referrals')
+            .update(update)
+            .eq('id', referralId)
+            .select()
+            .single();
+
+          if (updateError) {
+            throw handleSupabaseError(updateError);
+          }
+
+          if (!data) {
+            throw new Error('No data returned after cancelling referral');
+          }
+
+          // Update the patient's referral status back to needed
+          const { error: patientUpdateError } = await supabase
+            .from('patients')
+            .update({
+              referral_status: 'needed',
+              current_referral_id: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', data.patient_id);
+
+          if (patientUpdateError) {
+            console.error('Failed to update patient status:', patientUpdateError);
+          }
+
+          // Check if the referral_history table exists
+          const historyTableExists = await checkTableExists('referral_history');
+          
+          // Add a manual history entry
+          if (historyTableExists) {
+            const historyNote = notes || 'Referral cancelled';
+            await supabase
+              .from('referral_history')
+              .insert({
+                referral_id: referralId,
+                status: 'cancelled',
+                notes: historyNote,
+                created_by: 'Care Coordinator',
+              });
+          }
+
+          return { data, historyTableExists };
+        },
+        {
+          context: 'cancelReferral',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`cancelReferral: Retry attempt ${attempt} for referral ${referralId} after error:`, error.message);
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
+      const { data, historyTableExists } = result.data!;
+      
       setReferral(data);
       if (historyTableExists) {
         await refreshReferralHistory(referralId);
@@ -557,16 +691,42 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         return null;
       }
 
-      const { data, error: fetchError } = await supabase
-        .from('referrals')
-        .select('*')
-        .eq('id', referralId)
-        .single();
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const { data, error: fetchError } = await supabase
+            .from('referrals')
+            .select('*')
+            .eq('id', referralId)
+            .single();
 
-      if (fetchError) {
-        throw new Error(`Failed to fetch referral: ${fetchError.message}`);
+          if (fetchError) {
+            throw handleSupabaseError(fetchError);
+          }
+
+          if (!data) {
+            return null;
+          }
+
+          return data;
+        },
+        {
+          context: 'getReferralById',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`getReferralById: Retry attempt ${attempt} for referral ${referralId} after error:`, error.message);
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
+      const data = result.data;
+      
       if (!data) {
         return null;
       }
@@ -605,17 +765,37 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         return [];
       }
 
-      const { data, error: fetchError } = await supabase
-        .from('referrals')
-        .select('*')
-        .eq('patient_id', patientId)
-        .order('created_at', { ascending: false });
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const { data, error: fetchError } = await supabase
+            .from('referrals')
+            .select('*')
+            .eq('patient_id', patientId)
+            .order('created_at', { ascending: false });
 
-      if (fetchError) {
-        throw new Error(`Failed to fetch patient referrals: ${fetchError.message}`);
+          if (fetchError) {
+            throw handleSupabaseError(fetchError);
+          }
+
+          return data || [];
+        },
+        {
+          context: 'getPatientReferrals',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`getPatientReferrals: Retry attempt ${attempt} for patient ${patientId} after error:`, error.message);
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
-      return data || [];
+      return result.data || [];
     } catch (err) {
       const error = err as Error;
       setError(error);
@@ -641,18 +821,39 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         return [];
       }
 
-      const { data, error: fetchError } = await supabase
-        .from('referral_history')
-        .select('*')
-        .eq('referral_id', referralId)
-        .order('created_at', { ascending: true });
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const { data, error: fetchError } = await supabase
+            .from('referral_history')
+            .select('*')
+            .eq('referral_id', referralId)
+            .order('created_at', { ascending: true });
 
-      if (fetchError) {
-        throw new Error(`Failed to fetch referral history: ${fetchError.message}`);
+          if (fetchError) {
+            throw handleSupabaseError(fetchError);
+          }
+
+          return data || [];
+        },
+        {
+          context: 'getReferralHistory',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`getReferralHistory: Retry attempt ${attempt} for referral ${referralId} after error:`, error.message);
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
-      setHistory(data || []);
-      return data || [];
+      const data = result.data || [];
+      setHistory(data);
+      return data;
     } catch (err) {
       const error = err as Error;
       setError(error);
@@ -686,13 +887,29 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
         return;
       }
 
-      const { data } = await supabase
-        .from('referral_history')
-        .select('*')
-        .eq('referral_id', referralId)
-        .order('created_at', { ascending: true });
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const { data } = await supabase
+            .from('referral_history')
+            .select('*')
+            .eq('referral_id', referralId)
+            .order('created_at', { ascending: true });
 
-      setHistory(data || []);
+          return data || [];
+        },
+        {
+          context: 'refreshReferralHistory',
+          maxRetries: 2,
+          retryDelay: 1000,
+          networkAware: true,
+          showToast: false,
+        }
+      );
+
+      if (result.data) {
+        setHistory(result.data);
+      }
     } catch (error) {
       console.error('Error refreshing referral history:', error);
     }

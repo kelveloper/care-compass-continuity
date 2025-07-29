@@ -3,14 +3,18 @@ import { useToast } from './use-toast';
 import { Patient, Provider, ReferralStatus } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { Referral, ReferralInsert, ReferralUpdate } from '@/integrations/supabase/types';
+import { handleApiCallWithRetry, handleSupabaseError } from '@/lib/api-error-handler';
+import { useNetworkStatus } from './use-network-status';
 
 /**
  * Comprehensive optimistic updates hook for better UX
  * Provides immediate UI feedback for all major user interactions
+ * Enhanced with retry mechanisms for failed requests
  */
 export function useOptimisticUpdates() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const networkStatus = useNetworkStatus();
 
   /**
    * Optimistic patient list updates
@@ -39,7 +43,7 @@ export function useOptimisticUpdates() {
   };
 
   /**
-   * Optimistic referral creation with immediate UI feedback
+   * Optimistic referral creation with immediate UI feedback and retry mechanisms
    */
   const createReferralOptimistic = useMutation({
     mutationFn: async ({ 
@@ -51,38 +55,92 @@ export function useOptimisticUpdates() {
       providerId: string; 
       serviceType: string; 
     }): Promise<Referral> => {
-      const newReferral: ReferralInsert = {
-        patient_id: patientId,
-        provider_id: providerId,
-        service_type: serviceType,
-        status: 'sent', // Set to 'sent' immediately when created
-      };
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const newReferral: ReferralInsert = {
+            patient_id: patientId,
+            provider_id: providerId,
+            service_type: serviceType,
+            status: 'sent', // Set to 'sent' immediately when created
+          };
 
-      const { data, error } = await supabase
-        .from('referrals')
-        .insert(newReferral)
-        .select()
-        .single();
+          const { data, error } = await supabase
+            .from('referrals')
+            .insert(newReferral)
+            .select()
+            .single();
 
-      if (error) {
-        throw new Error(`Failed to create referral: ${error.message}`);
+          if (error) {
+            throw handleSupabaseError(error);
+          }
+
+          if (!data) {
+            throw new Error('No data returned after creating referral');
+          }
+
+          // Update patient status
+          const { error: updateError } = await supabase
+            .from('patients')
+            .update({
+              referral_status: 'sent',
+              current_referral_id: data.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', patientId);
+
+          if (updateError) {
+            console.warn('Failed to update patient status after referral creation:', updateError);
+            // Don't throw here as the referral was created successfully
+          }
+
+          return data;
+        },
+        {
+          context: 'createReferral',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`createReferralOptimistic: Retry attempt ${attempt} for patient ${patientId} after error:`, error.message);
+            toast({
+              title: 'Retrying Referral Creation...',
+              description: `Attempt ${attempt} to create referral.`,
+            });
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
-      if (!data) {
-        throw new Error('No data returned after creating referral');
+      return result.data!;
+    },
+    retry: (failureCount, error) => {
+      // Don't retry if offline
+      if (!networkStatus.isOnline) return false;
+      
+      // Reduce retries on poor connections
+      const maxRetries = networkStatus.getNetworkQuality() === 'poor' ? 1 : 3;
+      
+      // Don't retry for certain error types
+      if (error && typeof error === 'object' && 'message' in error) {
+        const errorMessage = (error as Error).message.toLowerCase();
+        if (errorMessage.includes('not found') || 
+            errorMessage.includes('unauthorized') || 
+            errorMessage.includes('forbidden') ||
+            errorMessage.includes('unique violation')) {
+          return false;
+        }
       }
-
-      // Update patient status
-      await supabase
-        .from('patients')
-        .update({
-          referral_status: 'sent',
-          current_referral_id: data.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', patientId);
-
-      return data;
+      
+      return failureCount < maxRetries;
+    },
+    retryDelay: (attemptIndex) => {
+      // Longer delays on poor connections
+      const baseDelay = networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000;
+      return Math.min(baseDelay * 2 ** attemptIndex, 30000);
     },
     onMutate: async ({ patientId, providerId, serviceType }) => {
       // Cancel outgoing refetches
@@ -147,7 +205,7 @@ export function useOptimisticUpdates() {
   });
 
   /**
-   * Optimistic referral status updates
+   * Optimistic referral status updates with retry mechanisms
    */
   const updateReferralStatusOptimistic = useMutation({
     mutationFn: async ({ 
@@ -161,45 +219,98 @@ export function useOptimisticUpdates() {
       notes?: string;
       patientId: string;
     }): Promise<Referral> => {
-      const update: ReferralUpdate = {
-        status,
-        updated_at: new Date().toISOString(),
-      };
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const update: ReferralUpdate = {
+            status,
+            updated_at: new Date().toISOString(),
+          };
 
-      if (notes) {
-        update.notes = notes;
+          if (notes) {
+            update.notes = notes;
+          }
+
+          if (status === 'completed') {
+            update.completed_date = new Date().toISOString();
+          }
+
+          const { data, error } = await supabase
+            .from('referrals')
+            .update(update)
+            .eq('id', referralId)
+            .select()
+            .single();
+
+          if (error) {
+            throw handleSupabaseError(error);
+          }
+
+          if (!data) {
+            throw new Error('No data returned after updating referral');
+          }
+
+          // Update patient status
+          const patientStatus = mapReferralStatusToPatientStatus(status);
+          const { error: updateError } = await supabase
+            .from('patients')
+            .update({
+              referral_status: patientStatus,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', patientId);
+
+          if (updateError) {
+            console.warn('Failed to update patient status after referral update:', updateError);
+            // Don't throw here as the referral was updated successfully
+          }
+
+          return data;
+        },
+        {
+          context: 'updateReferralStatus',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`updateReferralStatusOptimistic: Retry attempt ${attempt} for referral ${referralId} after error:`, error.message);
+            toast({
+              title: 'Retrying Status Update...',
+              description: `Attempt ${attempt} to update referral status.`,
+            });
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
-      if (status === 'completed') {
-        update.completed_date = new Date().toISOString();
+      return result.data!;
+    },
+    retry: (failureCount, error) => {
+      // Don't retry if offline
+      if (!networkStatus.isOnline) return false;
+      
+      // Reduce retries on poor connections
+      const maxRetries = networkStatus.getNetworkQuality() === 'poor' ? 1 : 3;
+      
+      // Don't retry for certain error types
+      if (error && typeof error === 'object' && 'message' in error) {
+        const errorMessage = (error as Error).message.toLowerCase();
+        if (errorMessage.includes('not found') || 
+            errorMessage.includes('unauthorized') || 
+            errorMessage.includes('forbidden')) {
+          return false;
+        }
       }
-
-      const { data, error } = await supabase
-        .from('referrals')
-        .update(update)
-        .eq('id', referralId)
-        .select()
-        .single();
-
-      if (error) {
-        throw new Error(`Failed to update referral: ${error.message}`);
-      }
-
-      if (!data) {
-        throw new Error('No data returned after updating referral');
-      }
-
-      // Update patient status
-      const patientStatus = mapReferralStatusToPatientStatus(status);
-      await supabase
-        .from('patients')
-        .update({
-          referral_status: patientStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', patientId);
-
-      return data;
+      
+      return failureCount < maxRetries;
+    },
+    retryDelay: (attemptIndex) => {
+      // Longer delays on poor connections
+      const baseDelay = networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000;
+      return Math.min(baseDelay * 2 ** attemptIndex, 30000);
     },
     onMutate: async ({ referralId, status, notes, patientId }) => {
       // Cancel outgoing refetches
@@ -282,7 +393,7 @@ export function useOptimisticUpdates() {
   });
 
   /**
-   * Optimistic patient information updates
+   * Optimistic patient information updates with retry mechanisms
    */
   const updatePatientInfoOptimistic = useMutation({
     mutationFn: async ({ 
@@ -292,25 +403,73 @@ export function useOptimisticUpdates() {
       patientId: string; 
       updates: Partial<Patient>; 
     }): Promise<Patient> => {
-      const { data, error } = await supabase
-        .from('patients')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', patientId)
-        .select()
-        .single();
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          const { data, error } = await supabase
+            .from('patients')
+            .update({
+              ...updates,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', patientId)
+            .select()
+            .single();
 
-      if (error) {
-        throw new Error(`Failed to update patient: ${error.message}`);
+          if (error) {
+            throw handleSupabaseError(error);
+          }
+
+          if (!data) {
+            throw new Error('No data returned after updating patient');
+          }
+
+          return data as Patient;
+        },
+        {
+          context: 'updatePatientInfo',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`updatePatientInfoOptimistic: Retry attempt ${attempt} for patient ${patientId} after error:`, error.message);
+            toast({
+              title: 'Retrying Patient Update...',
+              description: `Attempt ${attempt} to save patient information.`,
+            });
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
-      if (!data) {
-        throw new Error('No data returned after updating patient');
+      return result.data!;
+    },
+    retry: (failureCount, error) => {
+      // Don't retry if offline
+      if (!networkStatus.isOnline) return false;
+      
+      // Reduce retries on poor connections
+      const maxRetries = networkStatus.getNetworkQuality() === 'poor' ? 1 : 3;
+      
+      // Don't retry for certain error types
+      if (error && typeof error === 'object' && 'message' in error) {
+        const errorMessage = (error as Error).message.toLowerCase();
+        if (errorMessage.includes('not found') || 
+            errorMessage.includes('unauthorized') || 
+            errorMessage.includes('forbidden')) {
+          return false;
+        }
       }
-
-      return data as Patient;
+      
+      return failureCount < maxRetries;
+    },
+    retryDelay: (attemptIndex) => {
+      // Longer delays on poor connections
+      const baseDelay = networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000;
+      return Math.min(baseDelay * 2 ** attemptIndex, 30000);
     },
     onMutate: async ({ patientId, updates }) => {
       // Cancel outgoing refetches

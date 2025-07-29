@@ -5,6 +5,8 @@ import { Provider, Patient, ProviderMatch } from '@/types';
 import { findMatchingProviders } from '@/lib/provider-matching';
 import type { Database } from '@/integrations/supabase/types';
 import { useToast } from './use-toast';
+import { handleApiCallWithRetry, handleSupabaseError } from '@/lib/api-error-handler';
+import { useNetworkStatus } from './use-network-status';
 
 type DatabaseProvider = Database['public']['Tables']['providers']['Row'];
 
@@ -22,6 +24,7 @@ export function useProviderMatch() {
   const [isMatching, setIsMatching] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
   const { toast } = useToast();
+  const networkStatus = useNetworkStatus();
 
   // Fetch all providers for matching using optimized materialized view
   const {
@@ -34,76 +37,92 @@ export function useProviderMatch() {
     queryFn: async (): Promise<Provider[]> => {
       console.log('Fetching providers from optimized cache...');
       
-      try {
-        // Try to use the materialized view first for better performance
-        let data, error;
-        
-        try {
-          const cacheResult = await supabase
-            .from('provider_match_cache')
-            .select('*')
-            .order('rating_score', { ascending: false })
-            .order('availability_score', { ascending: false });
-            
-          data = cacheResult.data;
-          error = cacheResult.error;
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          // Try to use the materialized view first for better performance
+          let data, error;
           
-          if (!error && data) {
-            console.log(`Successfully fetched ${data.length} providers from cache`);
+          try {
+            const cacheResult = await supabase
+              .from('provider_match_cache')
+              .select('*')
+              .order('rating_score', { ascending: false })
+              .order('availability_score', { ascending: false });
+              
+            data = cacheResult.data;
+            error = cacheResult.error;
             
-            // Transform cached provider data with pre-calculated scores
-            return data.map((cachedProvider: any) => ({
-              ...cachedProvider,
+            if (!error && data) {
+              console.log(`Successfully fetched ${data.length} providers from cache`);
+              
+              // Transform cached provider data with pre-calculated scores
+              return data.map((cachedProvider: any) => ({
+                ...cachedProvider,
+                // Ensure arrays are properly initialized
+                specialties: cachedProvider.specialties || [],
+                accepted_insurance: cachedProvider.accepted_insurance || [],
+                in_network_plans: cachedProvider.in_network_plans || [],
+                // Include pre-calculated scores for faster matching
+                _cached_availability_score: cachedProvider.availability_score,
+                _cached_rating_score: cachedProvider.rating_score,
+              }));
+            }
+          } catch (cacheError) {
+            console.warn('Materialized view not available, falling back to providers table');
+            error = cacheError;
+          }
+          
+          // Fallback to regular providers table if cache fails
+          if (error || !data) {
+            console.log('Using fallback providers table query...');
+            const fallbackResult = await supabase
+              .from('providers')
+              .select('*')
+              .order('rating', { ascending: false })
+              .order('name', { ascending: true });
+
+            if (fallbackResult.error) {
+              console.error('Database error fetching providers:', fallbackResult.error);
+              throw handleSupabaseError(fallbackResult.error);
+            }
+
+            if (!fallbackResult.data) {
+              console.warn('No provider data returned from database');
+              return [];
+            }
+
+            console.log(`Successfully fetched ${fallbackResult.data.length} providers from database`);
+            
+            // Transform database providers to Provider objects with proper type handling
+            return fallbackResult.data.map((dbProvider: DatabaseProvider) => ({
+              ...dbProvider,
               // Ensure arrays are properly initialized
-              specialties: cachedProvider.specialties || [],
-              accepted_insurance: cachedProvider.accepted_insurance || [],
-              in_network_plans: cachedProvider.in_network_plans || [],
-              // Include pre-calculated scores for faster matching
-              _cached_availability_score: cachedProvider.availability_score,
-              _cached_rating_score: cachedProvider.rating_score,
+              specialties: dbProvider.specialties || [],
+              accepted_insurance: dbProvider.accepted_insurance || [],
+              in_network_plans: dbProvider.in_network_plans || [],
             }));
           }
-        } catch (cacheError) {
-          console.warn('Materialized view not available, falling back to providers table');
-          error = cacheError;
-        }
-        
-        // Fallback to regular providers table if cache fails
-        if (error || !data) {
-          console.log('Using fallback providers table query...');
-          const fallbackResult = await supabase
-            .from('providers')
-            .select('*')
-            .order('rating', { ascending: false })
-            .order('name', { ascending: true });
 
-          if (fallbackResult.error) {
-            console.error('Database error fetching providers:', fallbackResult.error);
-            throw new Error(`Failed to fetch providers: ${fallbackResult.error.message}`);
+          return [];
+        },
+        {
+          context: 'fetchProvidersForMatching',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`useProviderMatch: Retry attempt ${attempt} to fetch providers after error:`, error.message);
           }
-
-          if (!fallbackResult.data) {
-            console.warn('No provider data returned from database');
-            return [];
-          }
-
-          console.log(`Successfully fetched ${fallbackResult.data.length} providers from database`);
-          
-          // Transform database providers to Provider objects with proper type handling
-          return fallbackResult.data.map((dbProvider: DatabaseProvider) => ({
-            ...dbProvider,
-            // Ensure arrays are properly initialized
-            specialties: dbProvider.specialties || [],
-            accepted_insurance: dbProvider.accepted_insurance || [],
-            in_network_plans: dbProvider.in_network_plans || [],
-          }));
         }
+      );
 
-        return [];
-      } catch (err) {
-        console.error('Error in provider fetch:', err);
-        throw err;
+      if (result.error) {
+        console.error('Error in provider fetch:', result.error);
+        throw result.error;
       }
+
+      return result.data || [];
     },
     staleTime: 10 * 60 * 1000, // Consider data fresh for 10 minutes (providers change less frequently)
     gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes

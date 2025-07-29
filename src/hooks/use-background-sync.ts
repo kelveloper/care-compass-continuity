@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
+import { useNetworkStatus } from './use-network-status';
 
 /**
  * Hook for managing background synchronization and real-time updates
@@ -10,6 +11,7 @@ import { useToast } from './use-toast';
 export function useBackgroundSync() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const networkStatus = useNetworkStatus();
 
   /**
    * Invalidate all patient-related queries
@@ -149,35 +151,31 @@ export function useBackgroundSync() {
   }, [queryClient]);
 
   /**
-   * Handle online/offline status changes
+   * Handle network status changes with enhanced connectivity detection
    */
   useEffect(() => {
-    const handleOnline = () => {
+    // Only refresh data when we come back online after being offline
+    if (networkStatus.isOnline && networkStatus.wasOffline) {
       console.log('Background sync: Network reconnected, refreshing data');
-      queryClient.invalidateQueries();
-      toast({
-        title: 'Back Online',
-        description: 'Connection restored. Refreshing data...',
-      });
-    };
+      
+      // Use the network status hook's refresh function for better handling
+      networkStatus.refreshOnReconnect();
+    }
+  }, [networkStatus.isOnline, networkStatus.wasOffline, networkStatus.refreshOnReconnect]);
 
-    const handleOffline = () => {
-      console.log('Background sync: Network disconnected');
-      toast({
-        title: 'Connection Lost',
-        description: 'Working offline. Data may not be up to date.',
-        variant: 'destructive',
-      });
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [queryClient, toast]);
+  /**
+   * Adjust sync behavior based on network quality
+   */
+  useEffect(() => {
+    const networkQuality = networkStatus.getNetworkQuality();
+    
+    // Reduce background sync frequency on poor connections
+    if (networkQuality === 'poor') {
+      console.log('Background sync: Poor network detected, reducing sync frequency');
+      // The intervals will be handled by the existing useEffect hooks
+      // but we could add logic here to pause non-critical syncing
+    }
+  }, [networkStatus.getNetworkQuality]);
 
   return {
     invalidatePatientQueries,
@@ -185,8 +183,10 @@ export function useBackgroundSync() {
     invalidateReferralQueries,
     refreshAllData,
     
-    // Utility functions
-    isOnline: navigator.onLine,
+    // Network status information
+    networkStatus,
+    isOnline: networkStatus.isOnline,
+    networkQuality: networkStatus.getNetworkQuality(),
     queryClient,
   };
 }

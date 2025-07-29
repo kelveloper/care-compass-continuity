@@ -5,9 +5,12 @@ import { Button } from "@/components/ui/button";
 import { UserCircle, Clock, AlertCircle, CheckCircle2, Loader2, RefreshCw, Search, Filter, Wifi, X, History } from "lucide-react";
 import { PatientDetailContainer } from "./PatientDetailContainer";
 import { NotificationCenter } from "./NotificationCenter";
+import { NetworkStatusIndicator } from "./NetworkStatusIndicator";
+import { OfflineStatusPanel } from "./OfflineIndicator";
 import { usePatients } from "@/hooks/use-patients";
 import { useOptimisticListUpdates } from "@/hooks/use-optimistic-updates";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { useBackgroundSync } from "@/hooks/use-background-sync";
 import { Patient, PatientFilters } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -114,6 +117,9 @@ export const Dashboard = () => {
     isRefetching,
     failureCount
   } = usePatients(filters, realtimeActive);
+  
+  // Initialize background sync for real-time updates and network handling
+  const backgroundSync = useBackgroundSync();
   
   console.log('Dashboard: Patient data state:', {
     patients: patients?.length || 0,
@@ -328,11 +334,17 @@ export const Dashboard = () => {
             </div>
           </div>
           
-          {/* Connection Status Indicator */}
+          {/* Network Status Indicator */}
+          <NetworkStatusIndicator className="mt-2" />
+          
+          {/* Offline Status Indicator */}
+          <OfflineStatusPanel className="mt-2" />
+          
+          {/* Additional error indicator for query-specific errors */}
           {error && (
             <div className="mt-2 flex items-center gap-2 p-2 bg-destructive/10 rounded text-sm text-destructive">
               <AlertCircle className="h-4 w-4" />
-              <span>Connection issue detected. Some features may be limited.</span>
+              <span>Failed to load patient data. Please try again.</span>
               <Button 
                 variant="ghost" 
                 size="sm" 

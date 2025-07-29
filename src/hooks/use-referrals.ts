@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Referral, ReferralHistory, ReferralInsert, ReferralUpdate } from '@/integrations/supabase/types';
 import { Patient, Provider } from '@/types';
 import { useToast } from './use-toast';
+import { handleApiCallWithRetry, handleSupabaseError } from '@/lib/api-error-handler';
+import { useNetworkStatus } from './use-network-status';
 
 export interface UseReferralsReturn {
   /** Current referral data */
@@ -34,7 +36,7 @@ export interface UseReferralsReturn {
 }
 
 /**
- * Hook for managing patient referrals
+ * Hook for managing patient referrals with retry mechanisms
  */
 export function useReferrals(initialReferralId?: string): UseReferralsReturn {
   const [referral, setReferral] = useState<Referral | null>(null);
@@ -42,9 +44,10 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
   const { toast } = useToast();
+  const networkStatus = useNetworkStatus();
 
   /**
-   * Create a new referral
+   * Create a new referral with retry mechanisms
    */
   const createReferral = async (
     patientId: string,
@@ -55,43 +58,68 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
     setError(null);
 
     try {
-      // Create the referral
-      const newReferral: ReferralInsert = {
-        patient_id: patientId,
-        provider_id: providerId,
-        service_type: serviceType,
-        status: 'pending',
-      };
+      // Use network-aware API call with retry logic
+      const result = await handleApiCallWithRetry(
+        async () => {
+          // Create the referral
+          const newReferral: ReferralInsert = {
+            patient_id: patientId,
+            provider_id: providerId,
+            service_type: serviceType,
+            status: 'pending',
+          };
 
-      const { data, error: insertError } = await supabase
-        .from('referrals')
-        .insert(newReferral)
-        .select()
-        .single();
+          const { data, error: insertError } = await supabase
+            .from('referrals')
+            .insert(newReferral)
+            .select()
+            .single();
 
-      if (insertError) {
-        throw new Error(`Failed to create referral: ${insertError.message}`);
+          if (insertError) {
+            throw handleSupabaseError(insertError);
+          }
+
+          if (!data) {
+            throw new Error('No data returned after creating referral');
+          }
+
+          // Update the patient's referral status and current_referral_id
+          const { error: updateError } = await supabase
+            .from('patients')
+            .update({
+              referral_status: 'sent',
+              current_referral_id: data.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', patientId);
+
+          if (updateError) {
+            console.error('Failed to update patient status:', updateError);
+            // Continue anyway since the referral was created
+          }
+
+          return data;
+        },
+        {
+          context: 'createReferral',
+          maxRetries: networkStatus.getNetworkQuality() === 'poor' ? 1 : 3,
+          retryDelay: networkStatus.getNetworkQuality() === 'poor' ? 2000 : 1000,
+          networkAware: true,
+          onRetry: (attempt, error) => {
+            console.log(`createReferral: Retry attempt ${attempt} for patient ${patientId} after error:`, error.message);
+            toast({
+              title: 'Retrying Referral Creation...',
+              description: `Attempt ${attempt} to create referral.`,
+            });
+          }
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
       }
 
-      if (!data) {
-        throw new Error('No data returned after creating referral');
-      }
-
-      // Update the patient's referral status and current_referral_id
-      const { error: updateError } = await supabase
-        .from('patients')
-        .update({
-          referral_status: 'sent',
-          current_referral_id: data.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', patientId);
-
-      if (updateError) {
-        console.error('Failed to update patient status:', updateError);
-        // Continue anyway since the referral was created
-      }
-
+      const data = result.data!;
       setReferral(data);
       toast({
         title: 'Referral Created',
