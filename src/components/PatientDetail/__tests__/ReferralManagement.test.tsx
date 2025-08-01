@@ -1,12 +1,67 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { ReferralManagement } from '../ReferralManagement';
 import { Patient, Provider, ReferralStatus } from '@/types';
+
+// Mock CSS properties for DOM accessibility
+Object.defineProperty(window, 'getComputedStyle', {
+  value: () => ({
+    getPropertyValue: () => '',
+    marginLeft: '0px',
+    marginRight: '0px',
+    paddingLeft: '0px',
+    paddingRight: '0px',
+  }),
+});
 
 // Mock the toast hook
 jest.mock('@/hooks/use-toast', () => ({
   useToast: () => ({
     toast: jest.fn(),
   }),
+}));
+
+// Mock the notifications hook
+jest.mock('@/hooks/use-notifications', () => ({
+  useNotifications: () => ({
+    notifyStatusChange: jest.fn(),
+    notifyAppointmentScheduled: jest.fn(),
+    notifyReferralCompleted: jest.fn(),
+    notifyReferralCancelled: jest.fn(),
+  }),
+}));
+
+// Mock the optimistic updates hook
+jest.mock('@/hooks/use-optimistic-updates', () => ({
+  useOptimisticUpdates: () => ({
+    createReferral: jest.fn(),
+    updateReferralStatus: jest.fn(),
+    updatePatientInfo: jest.fn(),
+    selectProvider: jest.fn(),
+    isCreatingReferral: false,
+    isUpdatingReferral: false,
+    isUpdatingPatient: false,
+    createReferralError: null,
+    updateReferralError: null,
+    updatePatientError: null,
+    resetCreateReferral: jest.fn(),
+    resetUpdateReferral: jest.fn(),
+    resetUpdatePatient: jest.fn(),
+  }),
+}));
+
+// Mock lucide-react icons
+jest.mock('lucide-react', () => ({
+  Plus: () => <span>Plus</span>,
+  Check: () => <span>Check</span>,
+  Clock: () => <span>Clock</span>,
+  Phone: () => <span>Phone</span>,
+  AlertCircle: () => <span>AlertCircle</span>,
+  X: () => <span>X</span>,
+  Calendar: () => <span>Calendar</span>,
+  Send: () => <span>Send</span>,
+  CheckCircle2: () => <span>CheckCircle2</span>,
+  Loader2: () => <span>Loader2</span>,
 }));
 
 const mockPatient: Patient = {
@@ -18,8 +73,8 @@ const mockPatient: Patient = {
   required_followup: 'Physical therapy',
   insurance: 'Blue Cross Blue Shield',
   address: '123 Main St, City, State',
-  phone: '555-0123',
-  email: 'john@example.com',
+  leakage_risk_score: 75,
+  leakage_risk_level: 'high',
   referral_status: 'needed',
   current_referral_id: null,
   created_at: '2024-01-01T00:00:00Z',
@@ -36,10 +91,11 @@ const mockProvider: Provider = {
   type: 'Physical Therapy',
   address: '456 Oak St, City, State',
   phone: '555-0456',
-  email: 'provider@example.com',
   specialties: ['Physical Therapy', 'Sports Medicine'],
   accepted_insurance: ['Blue Cross Blue Shield'],
   rating: 4.5,
+  latitude: null,
+  longitude: null,
   in_network_plans: ['Blue Cross Blue Shield'],
   created_at: '2024-01-01T00:00:00Z',
   distance: 2.5,
@@ -80,9 +136,12 @@ describe('ReferralManagement', () => {
   it('renders required follow-up care information', () => {
     render(<ReferralManagement {...defaultProps} />);
     
-    expect(screen.getByText('Required Follow-up Care')).toBeInTheDocument();
+    // Check for the heading using partial text match since it's split by icon
+    expect(screen.getByText((content, element) => {
+      return element?.textContent === 'PlusRequired Follow-up Care';
+    })).toBeInTheDocument();
     expect(screen.getByText('Physical therapy')).toBeInTheDocument();
-    expect(screen.getByText('Add Follow-up Care')).toBeInTheDocument();
+    expect(screen.getByText(/add follow-up care/i)).toBeInTheDocument();
   });
 
   it('shows workflow progress indicator', () => {
@@ -105,8 +164,8 @@ describe('ReferralManagement', () => {
     
     expect(screen.getByText('Provider Selected')).toBeInTheDocument();
     expect(screen.getByText('Test Provider')).toBeInTheDocument();
-    expect(screen.getByText('Physical Therapy')).toBeInTheDocument();
-    expect(screen.getByText('Send Referral')).toBeInTheDocument();
+    expect(screen.getAllByText('Physical Therapy')[0]).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /send referral/i })).toBeInTheDocument();
   });
 
   it('shows send referral confirmation dialog when send button is clicked', async () => {
@@ -117,10 +176,12 @@ describe('ReferralManagement', () => {
       />
     );
     
-    fireEvent.click(screen.getByText('Send Referral'));
+    // Find the button specifically (not the text in workflow progress)
+    const sendButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(sendButton);
     
     await waitFor(() => {
-      expect(screen.getByText('Send Referral Confirmation')).toBeInTheDocument();
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
       expect(screen.getByText(/Are you sure you want to send this referral to/)).toBeInTheDocument();
     });
   });
@@ -135,8 +196,9 @@ describe('ReferralManagement', () => {
     );
     
     expect(screen.getByText('Referral Sent')).toBeInTheDocument();
-    expect(screen.getByText('Schedule Appointment')).toBeInTheDocument();
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
+    // Find the button specifically (not the text in workflow progress)
+    expect(screen.getByRole('button', { name: /schedule appointment/i })).toBeInTheDocument();
+    expect(screen.getByText(/cancel/i)).toBeInTheDocument();
   });
 
   it('shows schedule dialog when schedule button is clicked', async () => {
@@ -148,10 +210,12 @@ describe('ReferralManagement', () => {
       />
     );
     
-    fireEvent.click(screen.getByText('Schedule Appointment'));
+    // Find the button specifically (not the text in workflow progress)
+    const scheduleButton = screen.getByRole('button', { name: /schedule appointment/i });
+    fireEvent.click(scheduleButton);
     
     await waitFor(() => {
-      expect(screen.getByText('Schedule Appointment')).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
       expect(screen.getByText(/Schedule an appointment for/)).toBeInTheDocument();
     });
   });
@@ -167,10 +231,11 @@ describe('ReferralManagement', () => {
       />
     );
     
-    fireEvent.click(screen.getByText('Mark as Completed'));
+    const completeButton = screen.getByRole('button', { name: /mark as completed/i });
+    fireEvent.click(completeButton);
     
     await waitFor(() => {
-      expect(screen.getByText('Complete Referral')).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
       expect(screen.getByText(/Mark this referral as completed for/)).toBeInTheDocument();
     });
   });
@@ -184,10 +249,11 @@ describe('ReferralManagement', () => {
       />
     );
     
-    fireEvent.click(screen.getByText('Cancel'));
+    const cancelButton = screen.getByText(/cancel/i);
+    fireEvent.click(cancelButton);
     
     await waitFor(() => {
-      expect(screen.getByText('Cancel Referral')).toBeInTheDocument();
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
       expect(screen.getByText(/Are you sure you want to cancel this referral/)).toBeInTheDocument();
     });
   });
@@ -195,7 +261,8 @@ describe('ReferralManagement', () => {
   it('calls onAddFollowupCare when add button is clicked', () => {
     render(<ReferralManagement {...defaultProps} />);
     
-    fireEvent.click(screen.getByText('Add Follow-up Care'));
+    const addButton = screen.getByText(/add follow-up care/i);
+    fireEvent.click(addButton);
     
     expect(defaultProps.onAddFollowupCare).toHaveBeenCalledTimes(1);
   });

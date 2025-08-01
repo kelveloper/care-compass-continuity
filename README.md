@@ -32,7 +32,14 @@ cd <YOUR_PROJECT_NAME>
 # Step 3: Install the necessary dependencies.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Set up environment variables
+cp .env.example .env.local
+# Edit .env.local with your actual values
+
+# Step 5: Verify environment configuration
+npm run verify-env
+
+# Step 6: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
@@ -60,9 +67,36 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Environment Variables
+
+This project requires environment variables to be configured for proper operation. See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed setup instructions.
+
+### Quick Setup
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Edit `.env.local` with your actual values:
+   - `VITE_SUPABASE_URL`: Your Supabase project URL
+   - `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous key
+
+3. Verify your configuration:
+   ```bash
+   npm run verify-env
+   ```
+
 ## How can I deploy this project?
 
+### Lovable Deployment
 Simply open [Lovable](https://lovable.dev/projects/588ac3f6-2bb2-4c9b-a284-277760c783d4) and click on Share -> Publish.
+
+### Manual Deployment
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions including:
+- Vercel deployment
+- Environment variable configuration
+- Production build optimization
 
 ## Can I connect a custom domain to my Lovable project?
 

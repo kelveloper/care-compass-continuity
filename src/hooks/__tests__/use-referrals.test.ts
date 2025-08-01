@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react-hooks';
+import { renderHook, act } from '@testing-library/react';
 import { useReferrals } from '../use-referrals';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -77,7 +77,7 @@ describe('useReferrals', () => {
       };
     });
 
-    const { result, waitForNextUpdate } = renderHook(() => useReferrals());
+    const { result } = renderHook(() => useReferrals());
 
     await act(async () => {
       const newReferral = await result.current.createReferral(

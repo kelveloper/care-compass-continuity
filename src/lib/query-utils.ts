@@ -40,7 +40,7 @@ export async function searchProvidersOptimized(params: {
     
     try {
       // Start with the optimized materialized view if available
-      let query = supabase.from('provider_match_cache').select('*');
+      let query = (supabase as any).from('provider_match_cache').select('*');
 
     // Apply filters using indexes
     if (specialty) {
@@ -128,7 +128,7 @@ export async function searchProvidersOptimized(params: {
     console.error('Optimized provider search failed:', error);
     return await searchProvidersBasic(params);
   }
-  }, params);
+  });
 }
 
 /**
@@ -236,6 +236,7 @@ export async function searchPatientsOptimized(params: {
   limit?: number;
   offset?: number;
 }): Promise<Patient[]> {
+  return trackQuery('searchPatientsOptimized', async () => {
   const {
     searchTerm,
     riskLevel,
@@ -253,7 +254,7 @@ export async function searchPatientsOptimized(params: {
     
     try {
       // Use the optimized dashboard view
-      let query = supabase.from('dashboard_patients').select('*');
+      let query = (supabase as any).from('dashboard_patients').select('*');
 
     // Full-text search using GIN index
     if (searchTerm) {
@@ -300,7 +301,7 @@ export async function searchPatientsOptimized(params: {
         // Transform to Patient objects with enhanced data
         const { enhancePatientDataSync } = await import('./risk-calculator');
         
-        return data.map((dbPatient: any) => {
+        return (data as any[]).map((dbPatient: any) => {
           const patient = {
             ...dbPatient,
             leakageRisk: {
@@ -335,7 +336,7 @@ export async function searchPatientsOptimized(params: {
       }
 
       if (referralStatus) {
-        fallbackQuery = fallbackQuery.eq('referral_status', referralStatus);
+        fallbackQuery = fallbackQuery.eq('referral_status', referralStatus as any);
       }
 
       if (insurance) {
@@ -386,6 +387,7 @@ export async function searchPatientsOptimized(params: {
     console.error('Optimized patient search failed:', error);
     throw error;
   }
+  });
 }
 
 /**
@@ -403,7 +405,7 @@ export async function batchProviderLookup(providerIds: string[]): Promise<Map<st
     
     try {
       // Use materialized view if available
-      let query = supabase
+      let query = (supabase as any)
         .from('provider_match_cache')
         .select('*')
         .in('id', providerIds);
@@ -469,7 +471,7 @@ export async function batchProviderLookup(providerIds: string[]): Promise<Map<st
  */
 export async function refreshProviderCache(): Promise<void> {
   try {
-    const { error } = await supabase.rpc('refresh_provider_match_cache');
+    const { error } = await (supabase as any).rpc('refresh_provider_match_cache');
     
     if (error) {
       console.error('Failed to refresh provider cache:', error);
@@ -509,7 +511,7 @@ export async function findProvidersWithinDistance(params: {
   try {
     console.log('Using optimized geographic provider search function');
     
-    const { data, error } = await supabase.rpc('find_providers_within_distance', {
+    const { data, error } = await (supabase as any).rpc('find_providers_within_distance', {
       patient_lat: patientLat,
       patient_lng: patientLng,
       max_distance_miles: maxDistance,
@@ -529,7 +531,7 @@ export async function findProvidersWithinDistance(params: {
     }
 
     // Transform the function result to Provider objects
-    return data.map((result: any) => ({
+    return (data as any[]).map((result: any) => ({
       id: result.id,
       name: result.name,
       type: result.type,
@@ -578,7 +580,7 @@ export async function getHighRiskPatients(params: {
   try {
     console.log('Using optimized high-risk patient function');
     
-    const { data, error } = await supabase.rpc('get_high_risk_patients', {
+    const { data, error } = await (supabase as any).rpc('get_high_risk_patients', {
       risk_threshold: riskThreshold,
       limit_results: limit,
       offset_results: offset
@@ -594,7 +596,7 @@ export async function getHighRiskPatients(params: {
     }
 
     // Transform the function result to Patient objects
-    return data.map((result: any) => ({
+    return (data as any[]).map((result: any) => ({
       id: result.id,
       name: result.name,
       date_of_birth: new Date().toISOString(), // Placeholder - not returned for performance
@@ -641,7 +643,7 @@ export async function maintainQueryPerformance(): Promise<{
   try {
     console.log('Running query performance maintenance...');
     
-    const { error } = await supabase.rpc('maintain_query_performance');
+    const { error } = await (supabase as any).rpc('maintain_query_performance');
     
     if (error) {
       console.error('Query maintenance failed:', error);
@@ -686,6 +688,7 @@ export async function getQueryStats(): Promise<{
     cacheHitRate?: number;
   };
 }> {
+  return trackQuery('getQueryStats', async () => {
   try {
     console.log('Gathering comprehensive query statistics...');
     
@@ -702,7 +705,7 @@ export async function getQueryStats(): Promise<{
       supabase.from('referrals').select('id', { count: 'exact', head: true }),
       supabase.from('patients').select('id', { count: 'exact', head: true }).gte('leakage_risk_score', 70),
       supabase.from('referrals').select('id', { count: 'exact', head: true }).in('status', ['pending', 'sent', 'scheduled']),
-      supabase.from('provider_match_cache').select('id', { count: 'exact', head: true })
+      (supabase as any).from('provider_match_cache').select('id', { count: 'exact', head: true })
     ]);
 
     // Calculate performance metrics (simplified for demo)
@@ -734,6 +737,7 @@ export async function getQueryStats(): Promise<{
       performance: {}
     };
   }
+  });
 }
 
 /**
@@ -749,6 +753,7 @@ export async function performFullTextSearch(params: {
   providers: Provider[];
   totalResults: number;
 }> {
+  return trackQuery('performFullTextSearch', async () => {
   const { searchTerm, searchType, limit = 20 } = params;
   
   if (!searchTerm.trim()) {
@@ -872,4 +877,5 @@ export async function performFullTextSearch(params: {
     console.error('Full-text search failed:', error);
     return { patients: [], providers: [], totalResults: 0 };
   }
+  });
 }

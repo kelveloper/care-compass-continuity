@@ -32,8 +32,8 @@ const enhancePatients = (data: DatabasePatient[]): Patient[] => {
 /**
  * Simplified version of usePatients hook for debugging
  */
-export function usePatientsSimple(filters?: PatientFilters) {
-  console.log('usePatientsSimple: Hook called with filters:', filters);
+export function usePatientsSimple(filters?: PatientFilters, realtimeEnabled = true) {
+  console.log('usePatientsSimple: Hook called with filters:', filters, 'realtime:', realtimeEnabled);
   
   return useQuery({
     queryKey: ['patients-simple', filters],

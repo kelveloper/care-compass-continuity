@@ -22,12 +22,18 @@ describe('useRetryMechanism', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     
+    mockUseToast.mockReturnValue({
+      toast: mockToast,
+      dismiss: jest.fn(),
+      toasts: [],
+    });
+    
     mockUseNetworkStatus.mockReturnValue({
       isOnline: true,
       wasOffline: false,
       isSlowConnection: false,
       getNetworkQuality: () => 'good',
-      checkConnectivity: jest.fn(),
+      checkConnectivity: jest.fn().mockResolvedValue(true),
       refreshOnReconnect: jest.fn(),
     });
     
@@ -313,6 +319,69 @@ describe('useRetryMechanism', () => {
 });
 
 describe('useSimpleRetry', () => {
+  const mockToast = jest.fn();
+  
+  beforeEach(() => {
+    jest.clearAllMocks();
+    
+    mockUseToast.mockReturnValue({
+      toast: mockToast,
+      dismiss: jest.fn(),
+      toasts: [],
+    });
+    
+    mockUseNetworkStatus.mockReturnValue({
+      isOnline: true,
+      wasOffline: false,
+      isSlowConnection: false,
+      getNetworkQuality: () => 'good',
+      checkConnectivity: jest.fn().mockResolvedValue(true),
+      refreshOnReconnect: jest.fn(),
+    });
+
+    // Mock handleApiCallWithRetry to actually execute the operation
+    mockHandleApiCallWithRetry.mockImplementation(async (operation, options) => {
+      const maxRetries = options?.maxRetries || 3;
+      let attempts = 0;
+      let lastError: Error | null = null;
+
+      for (let i = 0; i <= maxRetries; i++) {
+        attempts = i + 1;
+        try {
+          const result = await operation();
+          return { data: result, error: null, attempts };
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          
+          // Call onRetry callback if provided
+          if (options?.onRetry && i < maxRetries) {
+            options.onRetry(i + 1, lastError);
+          }
+          
+          // Check if we should retry
+          if (options?.shouldRetry && !options.shouldRetry(lastError, i)) {
+            break;
+          }
+          
+          // Don't retry for certain error types
+          const errorMessage = lastError.message.toLowerCase();
+          if (errorMessage.includes('not found') || 
+              errorMessage.includes('unauthorized') || 
+              errorMessage.includes('forbidden')) {
+            break;
+          }
+          
+          // Add small delay for testing
+          if (i < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+          }
+        }
+      }
+
+      return { data: null, error: lastError, attempts };
+    });
+  });
+
   it('should provide simplified retry interface', async () => {
     const { result } = renderHook(() => useSimpleRetry());
     const mockOperation = jest.fn().mockResolvedValue('success');
@@ -330,6 +399,69 @@ describe('useSimpleRetry', () => {
 });
 
 describe('useDatabaseRetry', () => {
+  const mockToast = jest.fn();
+  
+  beforeEach(() => {
+    jest.clearAllMocks();
+    
+    mockUseToast.mockReturnValue({
+      toast: mockToast,
+      dismiss: jest.fn(),
+      toasts: [],
+    });
+    
+    mockUseNetworkStatus.mockReturnValue({
+      isOnline: true,
+      wasOffline: false,
+      isSlowConnection: false,
+      getNetworkQuality: () => 'good',
+      checkConnectivity: jest.fn().mockResolvedValue(true),
+      refreshOnReconnect: jest.fn(),
+    });
+
+    // Mock handleApiCallWithRetry to actually execute the operation
+    mockHandleApiCallWithRetry.mockImplementation(async (operation, options) => {
+      const maxRetries = options?.maxRetries || 3;
+      let attempts = 0;
+      let lastError: Error | null = null;
+
+      for (let i = 0; i <= maxRetries; i++) {
+        attempts = i + 1;
+        try {
+          const result = await operation();
+          return { data: result, error: null, attempts };
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          
+          // Call onRetry callback if provided
+          if (options?.onRetry && i < maxRetries) {
+            options.onRetry(i + 1, lastError);
+          }
+          
+          // Check if we should retry
+          if (options?.shouldRetry && !options.shouldRetry(lastError, i)) {
+            break;
+          }
+          
+          // Don't retry for certain error types
+          const errorMessage = lastError.message.toLowerCase();
+          if (errorMessage.includes('not found') || 
+              errorMessage.includes('unauthorized') || 
+              errorMessage.includes('forbidden')) {
+            break;
+          }
+          
+          // Add small delay for testing
+          if (i < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+          }
+        }
+      }
+
+      return { data: null, error: lastError, attempts };
+    });
+  });
+
   it('should execute database operations with appropriate settings', async () => {
     const { result } = renderHook(() => useDatabaseRetry());
     const mockOperation = jest.fn().mockResolvedValue('database result');

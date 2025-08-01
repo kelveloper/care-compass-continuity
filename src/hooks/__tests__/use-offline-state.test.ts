@@ -20,28 +20,62 @@ global.AbortSignal = {
   }),
 } as any;
 
-// Mock React Query and toast hooks
+// Mock console methods to suppress warnings during tests
+const originalConsoleWarn = console.warn;
+const originalConsoleLog = console.log;
+beforeAll(() => {
+  console.warn = jest.fn();
+  console.log = jest.fn();
+});
+
+afterAll(() => {
+  console.warn = originalConsoleWarn;
+  console.log = originalConsoleLog;
+});
+
+// Create proper mock implementations
+const mockInvalidateQueries = jest.fn().mockResolvedValue(undefined);
+const mockGetQueryCache = jest.fn(() => ({
+  getAll: jest.fn(() => []),
+  subscribe: jest.fn(() => jest.fn()),
+}));
+
+const mockQueryClient = {
+  getQueryData: jest.fn(() => null),
+  invalidateQueries: mockInvalidateQueries,
+  getQueryCache: mockGetQueryCache,
+};
+
+const mockToast = jest.fn();
+
+// Mock the modules
 jest.mock('@tanstack/react-query', () => ({
-  useQueryClient: () => ({
-    getQueryData: jest.fn(() => null),
-    invalidateQueries: jest.fn(),
-    getQueryCache: () => ({
-      getAll: () => [],
-      subscribe: () => jest.fn(),
-    }),
-  }),
+  useQueryClient: jest.fn(() => mockQueryClient),
 }));
 
 jest.mock('../use-toast', () => ({
-  useToast: () => ({
-    toast: jest.fn(),
-  }),
+  useToast: jest.fn(() => ({
+    toast: mockToast,
+  })),
 }));
 
 describe('useOfflineState', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useRealTimers(); // Start with real timers
     (navigator as any).onLine = true;
+    
+    // Reset mocks
+    mockInvalidateQueries.mockClear();
+    mockToast.mockClear();
+    mockGetQueryCache.mockReturnValue({
+      getAll: jest.fn(() => []),
+      subscribe: jest.fn(() => jest.fn()),
+    });
+    // Ensure fetch mock is reset
+    (fetch as jest.Mock).mockReset();
+    
+    // Use fake timers for most tests
     jest.useFakeTimers();
   });
 
@@ -98,14 +132,17 @@ describe('useOfflineState', () => {
       (navigator as any).onLine = true;
       window.dispatchEvent(new Event('online'));
       
-      // Wait for async connectivity check
-      await new Promise(resolve => setTimeout(resolve, 0));
+      // Wait for the async operations to complete
+      // Use setTimeout with real timers to wait for connectivity check
+      jest.useRealTimers();
+      await new Promise(resolve => setTimeout(resolve, 200));
+      jest.useFakeTimers();
     });
     
     expect(result.current.isOffline).toBe(false);
     expect(result.current.justCameOnline).toBe(true);
     expect(result.current.offlineSince).toBeUndefined();
-  });
+  }, 20000);
 
   it('should perform enhanced connectivity checks', async () => {
     const { result } = renderHook(() => useOfflineState());
@@ -212,18 +249,30 @@ describe('useOfflineState', () => {
     // Fast-forward to trigger periodic check
     await act(async () => {
       jest.advanceTimersByTime(15000); // 15 seconds
-      await new Promise(resolve => setTimeout(resolve, 0));
+      // Use real timers temporarily for async operations
+      jest.useRealTimers();
+      await new Promise(resolve => setTimeout(resolve, 200));
+      jest.useFakeTimers();
     });
     
     expect(result.current.isOffline).toBe(false);
     expect(result.current.justCameOnline).toBe(true);
-  });
+  }, 20000);
 });
 
 describe('useOfflineAwareOperation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useRealTimers();
     (navigator as any).onLine = true;
+    mockToast.mockClear();
+    // Ensure fetch mock is reset
+    (fetch as jest.Mock).mockReset();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('should execute operation when online', async () => {

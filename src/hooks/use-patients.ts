@@ -200,19 +200,19 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
             const cachedData = queryClient.getQueryData(['patients', filters]);
             if (cachedData) {
               console.log('usePatients: Returning cached data');
-              return cachedData as Patient[];
+              return { data: cachedData as Patient[], error: null, attempts: 1 };
             }
             
             // If no cached data, return empty array
             console.log('usePatients: No cached data available offline');
-            return [];
+            return { data: [], error: null, attempts: 1 };
           },
           operationName: 'fetch patients',
           showOfflineMessage: false, // We'll show this in the UI component
         }
       );
 
-      return result || [];
+      return result?.data || [];
     },
     staleTime: 2 * 60 * 1000, // Consider data fresh for 2 minutes (optimized for patient data)
     gcTime: 15 * 60 * 1000, // Keep in cache for 15 minutes
@@ -256,22 +256,6 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
     },
     refetchIntervalInBackground: networkStatus.getNetworkQuality() !== 'poor', // Don't background refetch on poor connections
     placeholderData: (previousData) => previousData || [], // Keep previous data while fetching new data to prevent flashing
-    onError: (error) => {
-      console.error('usePatients: Query error:', error);
-      
-      // Use the error handler for consistent error handling
-      handleError(error, { 
-        operation: 'fetchPatients',
-        filters: JSON.stringify(filters)
-      });
-      
-      // Show specific toast for patients loading
-      toast({
-        title: 'Failed to Load Patients',
-        description: 'There was a problem loading patient data. Please check your connection and try again.',
-        variant: 'destructive',
-      });
-    },
   });
 }
 
@@ -308,7 +292,7 @@ export function usePatientsTyped(filters?: PatientFilters, realtimeEnabled = tru
   const query = usePatients(filters, realtimeEnabled);
   
   return {
-    data: query.data,
+    data: query.data || undefined,
     isLoading: query.isLoading,
     error: query.error,
     refetch: query.refetch,
@@ -436,22 +420,6 @@ export function usePatient(patientId: string | undefined) {
     },
     refetchIntervalInBackground: networkStatus.getNetworkQuality() === 'good', // Only on good connections
     placeholderData: (previousData) => previousData, // Keep previous data while fetching new data to prevent flashing
-    onError: (error) => {
-      // Use the error handler for consistent error handling
-      handleError(error, { 
-        operation: 'fetchPatient',
-        patientId
-      });
-      
-      // Only show toast for non-"not found" errors
-      if (!error.message.includes('not found')) {
-        toast({
-          title: 'Failed to Load Patient',
-          description: 'There was a problem loading patient data. Please try again.',
-          variant: 'destructive',
-        });
-      }
-    },
   });
 }
 
@@ -490,7 +458,7 @@ export function usePatientTyped(patientId: string | undefined): UsePatientReturn
   const isNotFound = query.error?.message.includes('not found') ?? false;
   
   return {
-    data: query.data,
+    data: query.data || null,
     isLoading: query.isLoading,
     error: query.error,
     refetch: query.refetch,
