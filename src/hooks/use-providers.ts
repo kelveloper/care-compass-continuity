@@ -21,54 +21,23 @@ export function useProviders() {
       // Use network-aware API call with retry logic
       const result = await handleApiCallWithRetry(
         async () => {
-          // Use materialized view for better performance when available
+          // Use providers table directly since materialized view is not available
           const { data, error } = await supabase
-            .from('provider_match_cache')
+            .from('providers')
             .select('*')
-            .order('rating_score', { ascending: false })
-            .order('availability_score', { ascending: false });
-
-          if (error) {
-            // Fallback to regular providers table if materialized view fails
-            console.warn('Materialized view query failed, falling back to providers table:', error);
-            const fallbackResult = await supabase
-              .from('providers')
-              .select('*')
-              .order('rating', { ascending: false });
+            .order('rating', { ascending: false });
               
-            if (fallbackResult.error) {
-              throw handleSupabaseError(fallbackResult.error);
-            }
-            
-            return fallbackResult.data?.map((dbProvider: DatabaseProvider) => ({
-              ...dbProvider,
-            })) || [];
+          if (error) {
+            throw handleSupabaseError(error);
           }
 
           if (!data) {
             return [];
           }
 
-          // Transform cached provider data to Provider objects
-          return data.map((cachedProvider: any) => ({
-            ...cachedProvider,
-            // Map cached fields back to original provider structure
-            id: cachedProvider.id,
-            name: cachedProvider.name,
-            type: cachedProvider.type,
-            address: cachedProvider.address,
-            phone: cachedProvider.phone,
-            specialties: cachedProvider.specialties,
-            accepted_insurance: cachedProvider.accepted_insurance,
-            in_network_plans: cachedProvider.in_network_plans,
-            rating: cachedProvider.rating,
-            latitude: cachedProvider.latitude,
-            longitude: cachedProvider.longitude,
-            availability_next: cachedProvider.availability_next,
-            created_at: cachedProvider.created_at,
-            // Include pre-calculated scores for faster matching
-            _cached_availability_score: cachedProvider.availability_score,
-            _cached_rating_score: cachedProvider.rating_score,
+          // Transform provider data to Provider objects
+          return data.map((dbProvider: DatabaseProvider) => ({
+            ...dbProvider,
           }));
         },
         {

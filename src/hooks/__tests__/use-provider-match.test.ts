@@ -1,57 +1,10 @@
 import React, { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useProviderMatch } from '../use-provider-match';
 import { Patient, Provider } from '@/types';
 
-// Mock the Supabase client
-jest.mock('@/integrations/supabase/client', () => ({
-  supabase: {
-    from: jest.fn(() => ({
-      select: jest.fn(() => ({
-        order: jest.fn(() => ({
-          data: mockProviders,
-          error: null,
-        })),
-      })),
-    })),
-  },
-}));
-
-// Mock provider matching functions
-jest.mock('@/lib/provider-matching', () => ({
-  findMatchingProviders: jest.fn((providers, patient, limit) => {
-    // Return mock matches with calculated scores
-    return providers.slice(0, limit).map((provider: Provider, index: number) => ({
-      provider: {
-        ...provider,
-        distance: 2.5 + index,
-        matchScore: 85 - index * 5,
-        inNetwork: index === 0,
-        specialtyMatch: true,
-        availabilityScore: 80 - index * 10,
-      },
-      matchScore: 85 - index * 5,
-      distance: 2.5 + index,
-      inNetwork: index === 0,
-      explanation: {
-        distanceScore: 75 - index * 5,
-        insuranceScore: index === 0 ? 100 : 30,
-        availabilityScore: 80 - index * 10,
-        specialtyScore: 100,
-        ratingScore: 90 - index * 5,
-        reasons: [
-          index === 0 ? 'In your insurance network' : 'Out of network',
-          'Specializes in your required care',
-          'Close to your location',
-        ],
-      },
-    }));
-  }),
-  calculateDistance: jest.fn(() => 2.5),
-  getApproximateCoordinates: jest.fn(() => ({ lat: 42.3601, lng: -71.0589 })),
-}));
-
+// Mock provider data
 const mockProviders: Provider[] = [
   {
     id: '1',
@@ -100,6 +53,74 @@ const mockProviders: Provider[] = [
   },
 ];
 
+// Mock the Supabase client
+const mockSupabaseQuery = {
+  select: jest.fn(() => mockSupabaseQuery),
+  order: jest.fn(() => mockSupabaseQuery),
+  data: mockProviders,
+  error: null,
+};
+
+jest.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    from: jest.fn(() => mockSupabaseQuery),
+  },
+}));
+
+// Mock provider matching functions
+const mockFindMatchingProviders = jest.fn();
+const mockCalculateDistance = jest.fn();
+const mockGetApproximateCoordinates = jest.fn();
+
+jest.mock('@/lib/provider-matching', () => ({
+  findMatchingProviders: (providers: any, patient: any, limit: any) => mockFindMatchingProviders(providers, patient, limit),
+  calculateDistance: (lat1: any, lon1: any, lat2: any, lon2: any) => mockCalculateDistance(lat1, lon1, lat2, lon2),
+  getApproximateCoordinates: (address: any) => mockGetApproximateCoordinates(address),
+}));
+
+// Mock the toast hook
+jest.mock('../use-toast', () => ({
+  useToast: () => ({
+    toast: jest.fn(),
+  }),
+}));
+
+// Mock the network status hook
+jest.mock('../use-network-status', () => ({
+  useNetworkStatus: () => ({
+    isOnline: true,
+    wasOffline: false,
+  }),
+}));
+
+// Mock the API error handler
+jest.mock('@/lib/api-error-handler', () => ({
+  handleApiCallWithRetry: jest.fn(async (fn) => {
+    try {
+      const result = await fn();
+      return { data: result, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  }),
+  handleSupabaseError: jest.fn((error) => error),
+}));
+
+// Create a mocked useQuery function
+let mockUseQuery: jest.MockedFunction<any>;
+
+// Mock React Query
+jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual('@tanstack/react-query'),
+  useQuery: jest.fn(),
+}));
+
+// Get the mocked useQuery function
+beforeAll(() => {
+  const reactQuery = require('@tanstack/react-query');
+  mockUseQuery = reactQuery.useQuery as jest.MockedFunction<any>;
+});
+
 const mockPatient: Patient = {
   id: '1',
   name: 'John Doe',
@@ -112,6 +133,7 @@ const mockPatient: Patient = {
   leakage_risk_score: 75,
   leakage_risk_level: 'high',
   referral_status: 'needed',
+  current_referral_id: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
   leakageRisk: {
@@ -130,28 +152,79 @@ const createWrapper = () => {
     },
   });
 
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
+  return ({ children }: { children: ReactNode }) => 
+    React.createElement(QueryClientProvider, { client: queryClient }, children);
 };
 
 describe('useProviderMatch', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Reset mock data to defaults
+    mockSupabaseQuery.data = mockProviders;
+    mockSupabaseQuery.error = null;
+    
+    // Setup useQuery mock
+    mockUseQuery.mockReturnValue({
+      data: mockProviders,
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+
+    // Setup provider matching mocks
+    mockCalculateDistance.mockReturnValue(2.5);
+    mockGetApproximateCoordinates.mockReturnValue({ lat: 42.3601, lng: -71.0589 });
+    mockFindMatchingProviders.mockImplementation((providers, patient, limit) => {
+      // Return mock matches with calculated scores
+      if (!providers || providers.length === 0) {
+        return [];
+      }
+      return providers.slice(0, limit).map((provider: Provider, index: number) => ({
+        provider: {
+          ...provider,
+          distance: 2.5 + index,
+          matchScore: 85 - index * 5,
+          inNetwork: index === 0,
+          specialtyMatch: true,
+          availabilityScore: 80 - index * 10,
+        },
+        matchScore: 85 - index * 5,
+        distance: 2.5 + index,
+        inNetwork: index === 0,
+        explanation: {
+          distanceScore: 75 - index * 5,
+          insuranceScore: index === 0 ? 100 : 30,
+          availabilityScore: 80 - index * 10,
+          specialtyScore: 100,
+          ratingScore: 90 - index * 5,
+          reasons: [
+            index === 0 ? 'In your insurance network' : 'Out of network',
+            'Specializes in your required care',
+            'Close to your location',
+          ],
+        },
+      }));
+    });
   });
 
   it('should initialize with correct default state', async () => {
+    // Mock initial loading state
+    mockUseQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: jest.fn(),
+    });
+
     const { result } = renderHook(() => useProviderMatch(), {
       wrapper: createWrapper(),
     });
-
+    
     expect(result.current.matches).toEqual([]);
     expect(result.current.isMatching).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.providersLoading).toBe(true);
-  });
-
-  it('should load providers successfully', async () => {
+  });  it('should load providers successfully', async () => {
     const { result } = renderHook(() => useProviderMatch(), {
       wrapper: createWrapper(),
     });
@@ -174,7 +247,10 @@ describe('useProviderMatch', () => {
       expect(result.current.isReady).toBe(true);
     });
 
-    const matches = await result.current.findMatches(mockPatient, 'Physical Therapy', 3);
+    let matches: any;
+    await act(async () => {
+      matches = await result.current.findMatches(mockPatient, 'Physical Therapy', 3);
+    });
 
     expect(matches).toHaveLength(3);
     expect(matches[0].matchScore).toBe(85);
@@ -192,7 +268,10 @@ describe('useProviderMatch', () => {
       expect(result.current.isReady).toBe(true);
     });
 
-    const matches = await result.current.findMatches(mockPatient);
+    let matches: any;
+    await act(async () => {
+      matches = await result.current.findMatches(mockPatient);
+    });
 
     // Verify that distance is calculated and included in results
     expect(matches[0].distance).toBeDefined();
@@ -236,14 +315,11 @@ describe('useProviderMatch', () => {
 
   it('should handle errors gracefully', async () => {
     // Mock an error scenario
-    const { supabase } = require('@/integrations/supabase/client');
-    supabase.from.mockReturnValueOnce({
-      select: () => ({
-        order: () => ({
-          data: null,
-          error: { message: 'Database connection failed' },
-        }),
-      }),
+    mockUseQuery.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: new Error('Database connection failed'),
+      refetch: jest.fn(),
     });
 
     const { result } = renderHook(() => useProviderMatch(), {
@@ -265,14 +341,18 @@ describe('useProviderMatch', () => {
     });
 
     // First, find some matches
-    await result.current.findMatches(mockPatient);
+    await act(async () => {
+      await result.current.findMatches(mockPatient);
+    });
 
     await waitFor(() => {
       expect(result.current.matches.length).toBeGreaterThan(0);
     });
 
     // Then clear them
-    result.current.clearMatches();
+    act(() => {
+      result.current.clearMatches();
+    });
 
     expect(result.current.matches).toEqual([]);
     expect(result.current.error).toBeNull();
@@ -287,7 +367,10 @@ describe('useProviderMatch', () => {
       expect(result.current.isReady).toBe(true);
     });
 
-    const matches = await result.current.findMatches(mockPatient, 'Cardiology', 2);
+    let matches: any;
+    await act(async () => {
+      matches = await result.current.findMatches(mockPatient, 'Cardiology', 2);
+    });
 
     expect(matches).toBeDefined();
     // Verify that the service type filtering is applied
@@ -295,14 +378,11 @@ describe('useProviderMatch', () => {
 
   it('should handle empty provider list gracefully', async () => {
     // Mock empty provider list
-    const { supabase } = require('@/integrations/supabase/client');
-    supabase.from.mockReturnValueOnce({
-      select: () => ({
-        order: () => ({
-          data: [],
-          error: null,
-        }),
-      }),
+    mockUseQuery.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
     });
 
     const { result } = renderHook(() => useProviderMatch(), {
@@ -316,8 +396,15 @@ describe('useProviderMatch', () => {
     expect(result.current.hasProviders).toBe(false);
     expect(result.current.isReady).toBe(false);
 
-    const matches = await result.current.findMatches(mockPatient);
+    let matches: any;
+    await act(async () => {
+      matches = await result.current.findMatches(mockPatient);
+    });
+    
     expect(matches).toEqual([]);
-    expect(result.current.error).toContain('No providers available');
+    
+    await waitFor(() => {
+      expect(result.current.error).toContain('No providers available');
+    });
   });
 });

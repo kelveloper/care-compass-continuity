@@ -351,7 +351,17 @@ export function useOfflineState(): OfflineStateHook {
  */
 export function useOfflineAwareOperation() {
   const offlineState = useOfflineState();
-  const { toast } = useToast();
+  
+  // Optional toast integration
+  let toast: ReturnType<typeof useToast>['toast'] | null = null;
+  
+  try {
+    const toastHook = useToast();
+    toast = toastHook.toast;
+  } catch (error) {
+    // Toast not available - continue without it
+    console.warn('Offline aware operation: Toast not available');
+  }
 
   const executeOfflineAware = useCallback(async <T>(
     operation: () => Promise<T>,
@@ -377,7 +387,7 @@ export function useOfflineAwareOperation() {
         }
       }
 
-      if (showOfflineMessage) {
+      if (showOfflineMessage && toast) {
         toast({
           title: 'Offline',
           description: `Cannot ${operationName} while offline.`,

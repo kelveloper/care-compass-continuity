@@ -90,23 +90,34 @@ export function ErrorFallback({
   isAutoRetrying = false 
 }: ErrorFallbackProps) {
   const handleRetry = async () => {
-    // For network errors, check connectivity first
-    if (isNetworkError) {
-      try {
-        const response = await fetch('/favicon.ico', { 
-          method: 'HEAD', 
-          cache: 'no-cache',
-          signal: AbortSignal.timeout(5000)
-        });
-        
-        if (!response.ok) {
-          throw new Error('Still offline');
+    // For non-network errors, reset immediately
+    if (!isNetworkError) {
+      if (error.retryAction) {
+        try {
+          error.retryAction();
+        } catch (retryError) {
+          console.error('Retry action failed:', retryError);
         }
-      } catch (connectivityError) {
-        // Still offline, show user feedback
-        alert('Still unable to connect. Please check your internet connection.');
-        return;
       }
+      resetError();
+      return;
+    }
+
+    // For network errors, check connectivity first
+    try {
+      const response = await fetch('/favicon.ico', { 
+        method: 'HEAD', 
+        cache: 'no-cache',
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Still offline');
+      }
+    } catch (connectivityError) {
+      // Still offline, show user feedback
+      alert('Still unable to connect. Please check your internet connection.');
+      return;
     }
 
     if (error.retryAction) {

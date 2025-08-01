@@ -260,7 +260,7 @@ export const ReferralManagement = ({
             <SelectedProviderCard
               provider={selectedProvider}
               isCreatingReferral={isCreatingReferral}
-              onSendReferral={() => setShowSendConfirmation(true)}
+              onSendReferral={async () => setShowSendConfirmation(true)}
             />
           )}
 
@@ -268,9 +268,9 @@ export const ReferralManagement = ({
             <ActiveReferralCard
               referral={activeReferral}
               provider={selectedProvider}
-              onSchedule={() => setShowScheduleDialog(true)}
-              onComplete={() => setShowCompleteDialog(true)}
-              onCancel={() => setShowCancelConfirmation(true)}
+              onSchedule={async () => setShowScheduleDialog(true)}
+              onComplete={async () => setShowCompleteDialog(true)}
+              onCancel={async () => setShowCancelConfirmation(true)}
             />
           )}
         </CardContent>
@@ -542,7 +542,7 @@ const SelectedProviderCard = ({
         </div>
         <div>
           <p className="text-muted-foreground">
-            <strong>Next available:</strong> {provider.availability_next || provider.availability || "Call to schedule"}
+            <strong>Next available:</strong> {provider.availability_next || "Call to schedule"}
           </p>
           <p className="text-muted-foreground">
             <strong>Distance:</strong> {provider.distanceText || (typeof provider.distance === 'number' ? `${provider.distance} miles` : 'Unknown')}
@@ -845,7 +845,7 @@ const WorkflowProgress = ({ hasSelectedProvider, activeReferral }: WorkflowProgr
       title: "Schedule Appointment",
       description: "Coordinate appointment scheduling",
       completed: activeReferral?.status === "scheduled" || activeReferral?.status === "completed",
-      active: activeReferral?.status === "pending" || activeReferral?.status === "sent",
+      active: activeReferral?.status === "sent",
     },
     {
       id: 4,

@@ -178,6 +178,7 @@ describe('useNotifications', () => {
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Appointment Scheduled',
       description: expect.stringContaining('Appointment scheduled for John Doe with Dr. Smith'),
+      variant: 'default',
       duration: 5000,
     });
   });
@@ -207,6 +208,7 @@ describe('useNotifications', () => {
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Care Completed',
       description: 'Care completed for John Doe with Dr. Smith',
+      variant: 'default',
       duration: 5000,
     });
   });

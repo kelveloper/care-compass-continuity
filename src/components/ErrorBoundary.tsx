@@ -20,6 +20,7 @@ interface EnhancedErrorBoundaryState extends ErrorBoundaryState {
   isNetworkError: boolean;
   retryCount: number;
   isAutoRetrying: boolean;
+  resetKey: number;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, EnhancedErrorBoundaryState> {
@@ -34,6 +35,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, EnhancedErrorBo
       isNetworkError: false,
       retryCount: 0,
       isAutoRetrying: false,
+      resetKey: 0,
     };
   }
 
@@ -167,6 +169,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, EnhancedErrorBo
       isNetworkError: false,
       retryCount: 0,
       isAutoRetrying: false,
+      resetKey: this.state.resetKey + 1, // Increment to force re-render
     });
   };
 
@@ -185,7 +188,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, EnhancedErrorBo
       );
     }
 
-    return this.props.children;
+    return <div key={this.state.resetKey}>{this.props.children}</div>;
   }
 }
 

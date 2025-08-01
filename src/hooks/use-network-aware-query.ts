@@ -15,7 +15,19 @@ export interface NetworkAwareQueryOptions<TData, TError = Error> extends Omit<Us
   retryOnReconnect?: boolean;
 }
 
-export interface NetworkAwareQueryResult<TData, TError = Error> extends UseQueryResult<TData, TError> {
+export interface NetworkAwareQueryResult<TData, TError = Error> {
+  // Standard React Query properties
+  data: TData | undefined;
+  error: TError | null;
+  isError: boolean;
+  isLoading: boolean;
+  isSuccess: boolean;
+  isFetching: boolean;
+  status: 'error' | 'success' | 'pending';
+  fetchStatus: 'fetching' | 'paused' | 'idle';
+  refetch: () => Promise<any>;
+  
+  // Network-aware extensions
   /** Whether the query is failing due to network issues */
   isNetworkError: boolean;
   /** Whether we're showing cached data while offline */
@@ -51,11 +63,10 @@ export function useNetworkAwareQuery<TData, TError = Error>(
   const networkAwareQueryFn = useCallback(async (): Promise<TData> => {
     // If offline and we have fallback data, use it
     if (!networkStatus.isOnline && offlineFallback !== undefined) {
-      console.log('NetworkAwareQuery: Using offline fallback data');
       return offlineFallback;
     }
 
-    // If offline and no fallback, let React Query handle cached data
+    // If offline and no fallback, throw error to allow React Query to handle cached data
     if (!networkStatus.isOnline) {
       throw new Error('Device is offline and no cached data is available');
     }
@@ -98,14 +109,14 @@ export function useNetworkAwareQuery<TData, TError = Error>(
 
   // Determine if this is a network-related error
   const isNetworkError = !networkStatus.isOnline || 
-    (queryResult.error && 
-     (queryResult.error.message.includes('fetch') || 
-      queryResult.error.message.includes('network') ||
-      queryResult.error.message.includes('offline') ||
-      queryResult.error.message.includes('connection')));
+    (queryResult?.error && 
+     (String(queryResult.error).includes('fetch') || 
+      String(queryResult.error).includes('network') ||
+      String(queryResult.error).includes('offline') ||
+      String(queryResult.error).includes('connection')));
 
   // Determine if we're showing cached data
-  const isShowingCachedData = !networkStatus.isOnline && !!queryResult.data && !queryResult.isFetching;
+  const isShowingCachedData = !networkStatus.isOnline && !!queryResult?.data && !queryResult?.isFetching;
 
   // Get cached data age
   const getCachedDataAge = useCallback((): number | null => {
@@ -138,8 +149,8 @@ export function useNetworkAwareQuery<TData, TError = Error>(
     }
 
     // Force refetch
-    await queryResult.refetch();
-  }, [networkStatus, queryResult.refetch, showNetworkToasts, toast]);
+    await queryResult?.refetch?.();
+  }, [networkStatus, queryResult?.refetch, showNetworkToasts, toast]);
 
   // Handle network status changes
   useEffect(() => {
@@ -152,7 +163,7 @@ export function useNetworkAwareQuery<TData, TError = Error>(
       
       // Small delay to allow connection to stabilize
       setTimeout(() => {
-        queryResult.refetch();
+        queryResult?.refetch?.();
       }, 1000);
       
       if (showNetworkToasts && hasShownOfflineToastRef.current) {
@@ -184,11 +195,11 @@ export function useNetworkAwareQuery<TData, TError = Error>(
     }
     
     lastOnlineRef.current = isNowOnline;
-  }, [networkStatus.isOnline, retryOnReconnect, queryResult.refetch, showNetworkToasts, toast, getCachedDataAge]);
+  }, [networkStatus.isOnline, retryOnReconnect, queryResult?.refetch, showNetworkToasts, toast, getCachedDataAge]);
 
   // Show network-specific error toasts
   useEffect(() => {
-    if (queryResult.error && isNetworkError && showNetworkToasts) {
+    if (queryResult?.error && isNetworkError && showNetworkToasts) {
       const errorMessage = networkErrorMessage || 
         (!networkStatus.isOnline 
           ? 'Unable to load data while offline. Showing cached data if available.'
@@ -200,18 +211,24 @@ export function useNetworkAwareQuery<TData, TError = Error>(
           title: 'Connection Issue',
           description: errorMessage,
           variant: 'destructive',
-          action: {
-            altText: 'Retry',
-            onClick: retryWithNetworkCheck,
-            children: 'Retry'
-          }
         });
       }
     }
-  }, [queryResult.error, isNetworkError, showNetworkToasts, networkErrorMessage, networkStatus.isOnline, toast, retryWithNetworkCheck]);
+  }, [queryResult?.error, isNetworkError, showNetworkToasts, networkErrorMessage, networkStatus.isOnline, toast, retryWithNetworkCheck]);
 
   return {
-    ...queryResult,
+    // Standard React Query properties with defaults
+    data: queryResult?.data,
+    error: queryResult?.error || null,
+    isError: queryResult?.isError || false,
+    isLoading: queryResult?.isLoading || false,
+    isSuccess: queryResult?.isSuccess || false,
+    isFetching: queryResult?.isFetching || false,
+    status: queryResult?.status || 'pending',
+    fetchStatus: queryResult?.fetchStatus || 'idle',
+    refetch: queryResult?.refetch || (() => Promise.resolve()),
+    
+    // Network-aware extensions
     isNetworkError,
     isShowingCachedData,
     retryWithNetworkCheck,
