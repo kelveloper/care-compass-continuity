@@ -13,11 +13,6 @@
     "VITE_ENABLE_DEBUG_PANEL": "false",
     "VITE_ENABLE_MOCK_DATA": "false"
   },
-  "functions": {
-    "app/api/**/*.ts": {
-      "runtime": "nodejs18.x"
-    }
-  },
   "rewrites": [
     {
       "source": "/((?!api/).*)",
