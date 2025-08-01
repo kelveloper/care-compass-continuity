@@ -7,10 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:prod": "vite build --mode production",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "jest",
-    "verify-env": "node scripts/verify-env.cjs"
+    "verify-env": "node scripts/verify-env.cjs",
+    "deploy": "node scripts/deploy.js",
+    "deploy:vercel": "vercel --prod",
+    "verify-deployment": "node scripts/verify-deployment.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

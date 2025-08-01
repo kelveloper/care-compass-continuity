@@ -1,121 +1,206 @@
-# Deployment Guide
+# Deployment Guide - Healthcare Continuity MVP
 
-## Environment Variables Setup
+## Overview
 
-### Required Environment Variables
+This guide covers the deployment process for the Healthcare Continuity MVP to Vercel with proper environment variable configuration.
 
-The following environment variables are required for production deployment:
+## Prerequisites
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `VITE_SUPABASE_URL` | Supabase project URL | `https://your-project.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
-| `VITE_APP_NAME` | Application name | `Healthcare Continuity MVP` |
-| `VITE_APP_VERSION` | Application version | `1.0.0` |
+1. **Vercel Account**: Ensure you have a Vercel account
+2. **Vercel CLI**: Install globally with `npm i -g vercel`
+3. **Environment Variables**: Properly configured in `vercel.json`
 
-### Optional Environment Variables
+## Environment Configuration
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `VITE_ENABLE_DEBUG_PANEL` | Enable debug panel | `false` |
-| `VITE_ENABLE_MOCK_DATA` | Use mock data instead of database | `false` |
-| `VITE_ANALYTICS_ID` | Analytics tracking ID | - |
-| `VITE_SENTRY_DSN` | Sentry error tracking DSN | - |
+### Production Environment Variables
 
-## Vercel Deployment
-
-### 1. Environment Variables in Vercel
-
-Set up the following environment variables in your Vercel project settings:
+The following environment variables are configured for production deployment:
 
 ```bash
-# Required
+NODE_ENV=production
 VITE_SUPABASE_URL=https://lnjxrvcukzxhmtvnhsia.supabase.co
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 VITE_APP_NAME=Healthcare Continuity MVP
 VITE_APP_VERSION=1.0.0
-
-# Optional
 VITE_ENABLE_DEBUG_PANEL=false
 VITE_ENABLE_MOCK_DATA=false
 ```
 
-### 2. Build Configuration
+### Vercel Configuration
 
-The project is configured to build automatically with:
-- Build Command: `npm run build`
-- Output Directory: `dist`
-- Install Command: `npm install`
+The `vercel.json` file is configured with:
 
-### 3. Domain Configuration
+- **Framework**: Vite
+- **Build Command**: `npm run build`
+- **Output Directory**: `dist`
+- **Environment Variables**: Embedded in configuration
+- **Rewrites**: SPA routing support
 
-Configure your custom domain in Vercel dashboard if needed.
+## Deployment Steps
 
-## Other Deployment Platforms
+### Method 1: Using Deployment Script
 
-### Netlify
+1. **Run the deployment preparation script**:
 
-1. Set environment variables in Netlify dashboard
-2. Build command: `npm run build`
-3. Publish directory: `dist`
+   ```bash
+   npm run deploy
+   ```
 
-### AWS Amplify
+2. **Deploy to Vercel**:
+   ```bash
+   npm run deploy:vercel
+   ```
 
-1. Connect your repository
-2. Set environment variables in Amplify console
-3. Build settings are automatically detected
+### Method 2: Manual Deployment
 
-## Local Development
+1. **Build the project**:
 
-### 1. Environment Setup
+   ```bash
+   npm run build:prod
+   ```
 
-Copy the example environment file:
-```bash
-cp .env.example .env.local
-```
+2. **Login to Vercel** (if not already logged in):
 
-Fill in your actual values in `.env.local`.
+   ```bash
+   vercel login
+   ```
 
-### 2. Development Server
+3. **Deploy to production**:
+   ```bash
+   vercel --prod
+   ```
 
-```bash
-npm install
-npm run dev
-```
+### Method 3: GitHub Integration
 
-## Production Build Testing
+1. **Push to GitHub**: Ensure your code is pushed to a GitHub repository
+2. **Connect to Vercel**: Import your repository in the Vercel dashboard
+3. **Configure Environment Variables**: Set them in the Vercel dashboard
+4. **Deploy**: Vercel will automatically deploy on push to main branch
 
-Test the production build locally:
+## Verification Steps
 
-```bash
-npm run build
-npm run preview
-```
+After deployment, verify the following:
 
-## Environment Validation
+### 1. Application Loads
 
-The application automatically validates required environment variables on startup. If any required variables are missing, the application will throw an error with details about what's missing.
+- [ ] Application loads without errors
+- [ ] Dashboard displays patient data
+- [ ] Navigation works correctly
 
-## Security Notes
+### 2. Database Connection
 
-- Never commit `.env.local` or `.env.production.local` files
-- Use Vercel's environment variable encryption for sensitive data
-- Rotate Supabase keys regularly
-- Enable Row Level Security (RLS) in Supabase for production
+- [ ] Patient data loads from Supabase
+- [ ] Provider matching works
+- [ ] Risk calculations display correctly
+
+### 3. Environment Variables
+
+- [ ] Supabase connection established
+- [ ] Debug panel is disabled
+- [ ] Mock data is disabled
+- [ ] Application name displays correctly
+
+### 4. Performance
+
+- [ ] Initial load time < 3 seconds
+- [ ] Navigation is responsive
+- [ ] Database queries perform well
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Missing Environment Variables**: Check that all required variables are set in your deployment platform
-2. **Supabase Connection Issues**: Verify your Supabase URL and key are correct
-3. **Build Failures**: Ensure all dependencies are properly installed
+1. **Build Failures**
 
-### Debug Mode
+   - Check for TypeScript errors
+   - Verify all dependencies are installed
+   - Ensure environment variables are set
 
-Enable debug mode in development by setting:
+2. **Database Connection Issues**
+
+   - Verify Supabase URL and key
+   - Check RLS policies are configured
+   - Ensure database is accessible
+
+3. **Environment Variable Issues**
+   - Verify variables are prefixed with `VITE_`
+   - Check vercel.json configuration
+   - Ensure production values are correct
+
+### Debug Commands
+
+```bash
+# Test build locally
+npm run build:prod
+
+# Preview production build
+npm run preview
+
+# Verify environment variables
+npm run verify-env
+
+# Check Vercel deployment logs
+vercel logs [deployment-url]
 ```
-VITE_ENABLE_DEBUG_PANEL=true
-```
 
-This will show additional debugging information in the UI.
+## Post-Deployment
+
+### 1. Domain Configuration
+
+- Configure custom domain in Vercel dashboard (optional)
+- Set up SSL certificate (automatic with Vercel)
+
+### 2. Monitoring
+
+- Set up error tracking (Sentry integration available)
+- Configure analytics (Google Analytics integration available)
+- Monitor performance metrics
+
+### 3. Backup and Recovery
+
+- Database backups are handled by Supabase
+- Code is version controlled in Git
+- Vercel maintains deployment history
+
+## Security Considerations
+
+1. **Environment Variables**: Sensitive data is properly configured
+2. **HTTPS**: Enforced by Vercel
+3. **Database Security**: RLS policies are enabled
+4. **API Keys**: Anon key is used (read-only access)
+
+## Performance Optimization
+
+1. **Bundle Size**: Monitor and optimize large chunks
+2. **Caching**: Vercel provides automatic caching
+3. **CDN**: Global distribution via Vercel Edge Network
+4. **Database**: Indexes are configured for optimal performance
+
+## Maintenance
+
+### Regular Tasks
+
+- Monitor deployment logs
+- Update dependencies regularly
+- Review performance metrics
+- Update environment variables as needed
+
+### Emergency Procedures
+
+- Rollback: Use Vercel dashboard to rollback to previous deployment
+- Hotfix: Deploy directly from local environment
+- Database Issues: Contact Supabase support or use backup
+
+## Support
+
+For deployment issues:
+
+1. Check Vercel documentation
+2. Review deployment logs
+3. Verify environment configuration
+4. Test locally first
+
+---
+
+**Last Updated**: January 2025
+**Version**: 1.0.0
