@@ -8,6 +8,7 @@ import { NotificationCenter } from "./NotificationCenter";
 import { NetworkStatusIndicator } from "./NetworkStatusIndicator";
 import { OfflineStatusPanel } from "./OfflineIndicator";
 import { usePatientsSimple as usePatients } from "@/hooks/use-patients-simple";
+import { useInteractionTracking, useEngagementTracking, usePerformanceTracking } from "@/hooks/use-analytics";
 // import { useOptimisticListUpdates } from "@/hooks/use-optimistic-updates";
 // import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 // import { useBackgroundSync } from "@/hooks/use-background-sync";
@@ -59,6 +60,11 @@ const getStatusText = (status: string) => {
 
 export const Dashboard = () => {
   console.log('Dashboard: Component rendered');
+  
+  // Analytics hooks
+  const { trackPatientAction, trackFlow } = useInteractionTracking();
+  const { trackFeatureUse, trackTimeOnPage } = useEngagementTracking();
+  const { trackLoadTime } = usePerformanceTracking();
   
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [riskFilter, setRiskFilter] = useState<string>("all");
@@ -457,7 +463,13 @@ export const Dashboard = () => {
                 placeholder="Search patients by name, diagnosis, or service... (Press / to focus)"
                 className="pl-8 pr-20 text-sm sm:text-base"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  if (e.target.value.trim()) {
+                    trackPatientAction('search');
+                    trackFeatureUse('patient_search');
+                  }
+                }}
                 disabled={isLoading || isError}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape' && searchTerm) {
@@ -494,7 +506,11 @@ export const Dashboard = () => {
             <div className="flex gap-2 flex-wrap">
               <Select 
                 value={riskFilter} 
-                onValueChange={setRiskFilter}
+                onValueChange={(value) => {
+                  setRiskFilter(value);
+                  trackPatientAction('filter');
+                  trackFeatureUse('risk_filter');
+                }}
                 disabled={isLoading || isError}
               >
                 <SelectTrigger className="w-full sm:w-[140px] text-sm">
@@ -510,7 +526,11 @@ export const Dashboard = () => {
               
               <Select 
                 value={statusFilter} 
-                onValueChange={setStatusFilter}
+                onValueChange={(value) => {
+                  setStatusFilter(value);
+                  trackPatientAction('filter');
+                  trackFeatureUse('status_filter');
+                }}
                 disabled={isLoading || isError}
               >
                 <SelectTrigger className="w-full sm:w-[140px] text-sm">
@@ -764,11 +784,17 @@ export const Dashboard = () => {
                   } ${
                     selectedIndex === index ? 'bg-accent/70 border-primary/50' : ''
                   }`}
-                  onClick={() => setSelectedPatient(patient)}
+                  onClick={() => {
+                    setSelectedPatient(patient);
+                    trackPatientAction('view');
+                    trackFlow('patient_selected', 'patient_management');
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       setSelectedPatient(patient);
+                      trackPatientAction('view');
+                      trackFlow('patient_selected', 'patient_management');
                     }
                   }}
                   onFocus={() => setSelectedIndex(index)}

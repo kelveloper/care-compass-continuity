@@ -9,6 +9,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Sample patient data - designed to tell compelling stories
 const samplePatients = [
   {
+    name: "Maria Rodriguez",
+    date_of_birth: "1952-03-15",
+    diagnosis: "Type 2 Diabetes with Complications (Diabetic Ketoacidosis)",
+    discharge_date: "2025-01-18",
+    required_followup: "Endocrinology",
+    insurance: "Medicare",
+    address: "456 Mission Hill Ave, Boston, MA 02120",
+    leakage_risk_score: 85,
+    leakage_risk_level: "high",
+    referral_status: "needed"
+  },
+  {
     name: "Margaret Thompson",
     date_of_birth: "1942-03-15",
     diagnosis: "Total Hip Replacement",
@@ -476,6 +488,19 @@ const sampleProviders = [
   },
 
   // Endocrinology Providers
+  {
+    name: "Dr. Sarah Chen, MD - Boston Medical Center Endocrinology",
+    type: "Endocrinology",
+    address: "88 East Newton St, Boston, MA 02118",
+    phone: "(617) 555-8000",
+    specialties: ["Diabetes Management", "Diabetic Complications", "Insulin Therapy", "Metabolic Disorders"],
+    accepted_insurance: ["Medicare", "Blue Cross Blue Shield", "United Healthcare", "Aetna", "Harvard Pilgrim"],
+    rating: 4.8,
+    latitude: 42.3364,
+    longitude: -71.0723,
+    availability_next: "Thursday, Jan 23",
+    in_network_plans: ["Medicare", "Blue Cross Blue Shield", "United Healthcare", "Aetna", "Harvard Pilgrim"]
+  },
   {
     name: "Boston Endocrine Associates",
     type: "Endocrinology",

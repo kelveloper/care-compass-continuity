@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorDebugPanel } from "@/components/ErrorDebugPanel";
 import { OfflineStatusBadge } from "@/components/OfflineIndicator";
+import { AnalyticsProvider } from "@/components/AnalyticsProvider";
 import { errorLogger } from "@/lib/error-logger";
 import Index from "./pages/Index";
 import TestPage from "./pages/TestPage";
@@ -117,7 +118,8 @@ const App = () => {
       }}
     >
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
+        <AnalyticsProvider>
+          <TooltipProvider>
           <Toaster />
           <Sonner />
           <ErrorBoundary isolate>
@@ -166,7 +168,8 @@ const App = () => {
           <div className="fixed top-4 right-4 z-50">
             <OfflineStatusBadge />
           </div>
-        </TooltipProvider>
+          </TooltipProvider>
+        </AnalyticsProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

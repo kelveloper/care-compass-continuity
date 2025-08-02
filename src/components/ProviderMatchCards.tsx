@@ -8,6 +8,7 @@ import { useOptimisticUpdates } from "@/hooks/use-optimistic-updates";
 import { Patient, Provider, ProviderMatch } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { useListKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
+import { useInteractionTracking, useEngagementTracking } from "@/hooks/use-analytics";
 
 interface ProviderMatchCardsProps {
   patient: Patient;
@@ -20,6 +21,9 @@ export const ProviderMatchCards = ({
   onProviderSelected, 
   onCancel 
 }: ProviderMatchCardsProps) => {
+  const { trackProviderAction, trackFlow } = useInteractionTracking();
+  const { trackFeatureUse } = useEngagementTracking();
+  
   const { findMatches, isMatching, error, providersLoading, isReady, refreshProviders } = useProviderMatch();
   const [matches, setMatches] = useState<ProviderMatch[]>([]);
   const { toast } = useToast();
@@ -50,6 +54,8 @@ export const ProviderMatchCards = ({
       };
       
       selectProviderOptimistic(patient.id, safeProvider, onProviderSelected);
+      trackProviderAction('select');
+      trackFlow('provider_selected', 'provider_matching');
     },
     onCancel
   );
@@ -65,6 +71,8 @@ export const ProviderMatchCards = ({
         await refreshProviders();
         
         // Then find matches based on the patient's required followup
+        trackProviderAction('search');
+        trackFeatureUse('provider_matching');
         const providerMatches = await findMatches(patient, patient.required_followup, 3);
         
         // Validate the matches to ensure they have all required properties

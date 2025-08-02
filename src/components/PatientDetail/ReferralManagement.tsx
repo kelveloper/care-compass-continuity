@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useInteractionTracking } from "@/hooks/use-analytics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -68,6 +69,8 @@ export const ReferralManagement = ({
   onCancelReferral,
   onRetryLoad,
 }: ReferralManagementProps) => {
+  const { trackReferralAction, trackFlow } = useInteractionTracking();
+  
   const [showSendConfirmation, setShowSendConfirmation] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
@@ -92,6 +95,8 @@ export const ReferralManagement = ({
     setIsProcessing(true);
     try {
       await onSendReferral();
+      trackReferralAction('create');
+      trackFlow('referral_sent', 'referral_management');
       setShowSendConfirmation(false);
       
       // Enhanced notification with the new system
@@ -124,6 +129,8 @@ export const ReferralManagement = ({
     setIsProcessing(true);
     try {
       await onScheduleReferral();
+      trackReferralAction('update');
+      trackFlow('referral_scheduled', 'referral_management');
       setShowScheduleDialog(false);
       setNotes("");
       
@@ -155,6 +162,8 @@ export const ReferralManagement = ({
     setIsProcessing(true);
     try {
       await onCompleteReferral();
+      trackReferralAction('complete');
+      trackFlow('referral_completed', 'referral_management');
       setShowCompleteDialog(false);
       setNotes("");
       
