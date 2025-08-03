@@ -11,10 +11,14 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "jest",
+    "test:workflow": "node test-complete-workflow.js",
+    "test:workflow:headless": "HEADLESS=true node test-complete-workflow.js",
     "verify-env": "node scripts/verify-env.cjs",
     "deploy": "node scripts/deploy.js",
     "deploy:vercel": "vercel --prod",
-    "verify-deployment": "node scripts/verify-deployment.js"
+    "verify-deployment": "node scripts/verify-deployment.js",
+    "verify-demo-backups": "node scripts/verify-demo-backups.cjs",
+    "demo-recovery": "node scripts/demo-recovery.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -89,6 +93,7 @@
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
     "lovable-tagger": "^1.1.8",
+    "playwright": "^1.54.2",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.11",
     "ts-jest": "^29.4.0",

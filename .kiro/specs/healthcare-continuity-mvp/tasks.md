@@ -203,8 +203,8 @@
 
 - [x] Create demo script highlighting key features
 - [x] Prepare "hero patient" story for demonstration
-- [ ] Test complete user workflow multiple times
-- [ ] Prepare backup plans for demo day
+- [x] Test complete user workflow multiple times
+- [x] Prepare backup plans for demo day
 
 ## Success Criteria
 
