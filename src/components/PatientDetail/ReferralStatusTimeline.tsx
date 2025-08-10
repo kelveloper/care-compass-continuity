@@ -53,7 +53,7 @@ export const ReferralStatusTimeline = ({
     switch (activeReferral.status) {
       case "completed": return 100;
       case "scheduled": return 75;
-      case "sent": case "pending": return 50;
+      case "sent": return 50;
       default: return selectedProvider ? 25 : 0;
     }
   };
@@ -658,7 +658,7 @@ const EnhancedReferralTrackingSummary = ({
         <div className="mt-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
           <h5 className="text-sm font-medium text-primary mb-2">Next Steps</h5>
           <p className="text-xs text-muted-foreground">
-            {referral.status === "pending" || referral.status === "sent" 
+            {referral.status === "sent" 
               ? "Waiting for provider to confirm appointment availability."
               : referral.status === "scheduled"
               ? "Patient should attend the scheduled appointment."

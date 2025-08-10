@@ -9,6 +9,7 @@ import { useErrorHandler } from './use-error-handler';
 import { handleSupabaseError, handleApiCallWithRetry } from '@/lib/api-error-handler';
 import { useNetworkStatus } from './use-network-status';
 import { useOfflineAwareOperation } from './use-offline-state';
+import { measureAsync, startTiming, endTiming } from '@/lib/performance-monitor';
 
 type DatabasePatient = Database['public']['Tables']['patients']['Row'];
 
@@ -64,11 +65,15 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
     queryFn: async (): Promise<Patient[]> => {
       console.log('usePatients: Fetching patients with filters:', filters);
       
-      // Use offline-aware operation with fallback to cached data
-      const result = await executeOfflineAware(
-        // Online operation
-        async () => handleApiCallWithRetry(
-          async () => {
+      // Use performance monitoring for patient data fetch
+      const result = await measureAsync(
+        'patients-data-fetch',
+        async () => {
+          // Use offline-aware operation with fallback to cached data
+          const result = await executeOfflineAware(
+            // Online operation
+            async () => handleApiCallWithRetry(
+              async () => {
           // Try optimized query functions first, then fallback to regular queries
           let data, error;
         
@@ -211,8 +216,12 @@ export function usePatients(filters?: PatientFilters, realtimeEnabled = true) {
           showOfflineMessage: false, // We'll show this in the UI component
         }
       );
-
+      
       return result?.data || [];
+        }
+      );
+      
+      return result || [];
     },
     staleTime: 2 * 60 * 1000, // Consider data fresh for 2 minutes (optimized for patient data)
     gcTime: 15 * 60 * 1000, // Keep in cache for 15 minutes

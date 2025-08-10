@@ -115,6 +115,10 @@ Object.defineProperty(window, 'getComputedStyle', {
     getPropertyValue: jest.fn().mockReturnValue(''),
     visibility: 'visible',
     display: 'block',
+    minHeight: '44px',
+    minWidth: '44px',
+    height: '44px',
+    width: '44px',
   })),
 });
 

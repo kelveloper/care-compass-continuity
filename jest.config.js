@@ -34,6 +34,7 @@ export default {
     // Mock problematic ES modules
     '^isows$': '<rootDir>/src/__mocks__/isows.js',
     '^@supabase/realtime-js$': '<rootDir>/src/__mocks__/supabase-realtime.js',
+    '^@/lib/analytics$': '<rootDir>/src/__mocks__/analytics.ts',
   },
 
 };

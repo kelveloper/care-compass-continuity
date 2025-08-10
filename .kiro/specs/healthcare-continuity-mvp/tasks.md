@@ -105,7 +105,7 @@
 
 #### Task 3.1: Dashboard Updates
 
-- [ ] Replace mock data in Dashboard component with `usePatients` hook
+- [x] Replace mock data in Dashboard component with `usePatients` hook
 - [x] Implement real-time patient list sorting by risk score
 - [x] Add loading and error states
 - [x] Implement patient search/filtering functionality
@@ -210,13 +210,13 @@
 
 By end of implementation:
 
-- [ ] Live, publicly accessible URL
-- [ ] Real database with 15+ patients and 30+ providers
-- [ ] Functional risk scoring and provider matching
-- [ ] Complete referral workflow from start to finish
-- [ ] Professional UI that tells the story of solving Brenda's problem
-- [ ] Sub-3-second load times for all major interactions
-- [ ] Mobile-responsive design
+- [x] Live, publicly accessible URL
+- [x] Real database with 15+ patients and 30+ providers
+- [x] Functional risk scoring and provider matching
+- [x] Complete referral workflow from start to finish
+- [x] Professional UI that tells the story of solving Brenda's problem
+- [x] Sub-3-second load times for all major interactions
+- [x] Mobile-responsive design
 - [x] Error-free demo experience
 
 ## Technical Debt & Future Enhancements

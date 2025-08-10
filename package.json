@@ -18,7 +18,9 @@
     "deploy:vercel": "vercel --prod",
     "verify-deployment": "node scripts/verify-deployment.js",
     "verify-demo-backups": "node scripts/verify-demo-backups.cjs",
-    "demo-recovery": "node scripts/demo-recovery.cjs"
+    "demo-recovery": "node scripts/demo-recovery.cjs",
+    "test:performance": "node test-performance.js",
+    "test:performance:headless": "HEADLESS=true node test-performance.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -57,6 +59,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
+    "dotenv": "^17.2.1",
     "embla-carousel-react": "^8.3.0",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.462.0",

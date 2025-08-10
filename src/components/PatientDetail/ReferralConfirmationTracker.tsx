@@ -57,7 +57,7 @@ export const ReferralConfirmationTracker = ({
         id: "referral_sent",
         title: "Referral Transmitted",
         description: "Digital referral sent to provider's system",
-        status: activeReferral.status === "pending" ? "in_progress" : "completed",
+        status: activeReferral.status === "needed" ? "in_progress" : "completed",
         timestamp: activeReferral.createdAt,
         estimatedTime: "Immediate",
       },
@@ -66,7 +66,7 @@ export const ReferralConfirmationTracker = ({
         title: "Provider Notified",
         description: "Provider has been notified of the new referral",
         status: 
-          activeReferral.status === "pending" ? "in_progress" :
+          activeReferral.status === "needed" ? "in_progress" :
           ["sent", "scheduled", "completed"].includes(activeReferral.status) ? "completed" : "pending",
         estimatedTime: "Within 15 minutes",
       },
@@ -76,7 +76,7 @@ export const ReferralConfirmationTracker = ({
         description: "Provider has acknowledged receipt of referral",
         status: 
           ["sent", "scheduled", "completed"].includes(activeReferral.status) ? "completed" :
-          activeReferral.status === "pending" ? "in_progress" : "pending",
+          activeReferral.status === "needed" ? "in_progress" : "pending",
         estimatedTime: "Within 2 hours",
       },
       {
@@ -106,7 +106,7 @@ export const ReferralConfirmationTracker = ({
     const now = new Date().getTime();
     const hoursSinceCreated = (now - createdTime) / (1000 * 60 * 60);
 
-    if (activeReferral.status === "pending" && hoursSinceCreated > 4) {
+    if (activeReferral.status === "needed" && hoursSinceCreated > 4) {
       // Mark provider notification as potentially failed
       steps[1].status = "failed";
       steps[1].actionRequired = true;
@@ -314,12 +314,7 @@ export const ReferralConfirmationTracker = ({
                   <Phone className="h-3 w-3" />
                   <span>{selectedProvider.phone}</span>
                 </div>
-                {selectedProvider.email && (
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-3 w-3" />
-                    <span>{selectedProvider.email}</span>
-                  </div>
-                )}
+
               </div>
             </div>
             <div className="mt-3 flex gap-2">
@@ -332,17 +327,7 @@ export const ReferralConfirmationTracker = ({
                 <Phone className="h-3 w-3" />
                 Call Provider
               </Button>
-              {selectedProvider.email && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(`mailto:${selectedProvider.email}`)}
-                  className="gap-2"
-                >
-                  <Mail className="h-3 w-3" />
-                  Send Email
-                </Button>
-              )}
+
             </div>
           </div>
         )}

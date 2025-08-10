@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/249</span>
+                <span class='fraction'>0/255</span>
             </div>
         
             
@@ -39,14 +39,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/32</span>
+                <span class='fraction'>0/38</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/240</span>
+                <span class='fraction'>0/243</span>
             </div>
         
             
@@ -937,7 +937,13 @@
 <a name='L872'></a><a href='#L872'>872</a>
 <a name='L873'></a><a href='#L873'>873</a>
 <a name='L874'></a><a href='#L874'>874</a>
-<a name='L875'></a><a href='#L875'>875</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L875'></a><a href='#L875'>875</a>
+<a name='L876'></a><a href='#L876'>876</a>
+<a name='L877'></a><a href='#L877'>877</a>
+<a name='L878'></a><a href='#L878'>878</a>
+<a name='L879'></a><a href='#L879'>879</a>
+<a name='L880'></a><a href='#L880'>880</a>
+<a name='L881'></a><a href='#L881'>881</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1175,6 +1181,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1331,6 +1338,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1625,6 +1633,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1679,6 +1688,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1689,6 +1699,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1810,6 +1821,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
  * Database query optimization utilities
@@ -1941,7 +1953,7 @@ type DatabaseProvider = Database['public']['Tables']['providers']['Row'];
 <span class="cstat-no" title="statement not covered" >    console.error('Optimized provider search failed:', error);</span>
 <span class="cstat-no" title="statement not covered" >    return await searchProvidersBasic(params);</span>
   }
-  }, params);
+  });
 }
 &nbsp;
 /**
@@ -2049,6 +2061,7 @@ async function <span class="fstat-no" title="function not covered" >searchProvid
   limit?: number;
   offset?: number;
 }): Promise&lt;Patient[]&gt; {
+<span class="cstat-no" title="statement not covered" >  return trackQuery('searchPatientsOptimized', <span class="fstat-no" title="function not covered" >async () =</span>&gt;<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" > {</span></span></span>
   const {
     searchTerm,
     riskLevel,
@@ -2199,6 +2212,7 @@ async function <span class="fstat-no" title="function not covered" >searchProvid
 <span class="cstat-no" title="statement not covered" >    console.error('Optimized patient search failed:', error);</span>
 <span class="cstat-no" title="statement not covered" >    throw error;</span>
   }
+  });
 }
 &nbsp;
 /**
@@ -2499,6 +2513,7 @@ async function <span class="fstat-no" title="function not covered" >searchProvid
     cacheHitRate?: number;
   };
 }&gt; {
+<span class="cstat-no" title="statement not covered" >  return trackQuery('getQueryStats', <span class="fstat-no" title="function not covered" >async () =</span>&gt;<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" > {</span></span></span>
 <span class="cstat-no" title="statement not covered" >  try {</span>
 <span class="cstat-no" title="statement not covered" >    console.log('Gathering comprehensive query statistics...');</span>
     
@@ -2547,6 +2562,7 @@ async function <span class="fstat-no" title="function not covered" >searchProvid
       performance: {}
     };
   }
+  });
 }
 &nbsp;
 /**
@@ -2562,6 +2578,7 @@ async function <span class="fstat-no" title="function not covered" >searchProvid
   providers: Provider[];
   totalResults: number;
 }&gt; {
+<span class="cstat-no" title="statement not covered" >  return trackQuery('performFullTextSearch', <span class="fstat-no" title="function not covered" >async () =</span>&gt;<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" > {</span></span></span>
   const { searchTerm, searchType, limit = <span class="branch-0 cbranch-no" title="branch not covered" >20 </span>} = <span class="cstat-no" title="statement not covered" >params;</span>
   
 <span class="cstat-no" title="statement not covered" >  if (!searchTerm.trim()) {</span>
@@ -2685,6 +2702,7 @@ async function <span class="fstat-no" title="function not covered" >searchProvid
 <span class="cstat-no" title="statement not covered" >    console.error('Full-text search failed:', error);</span>
 <span class="cstat-no" title="statement not covered" >    return { patients: [], providers: [], totalResults: 0 };</span>
   }
+  });
 }</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -2692,7 +2710,7 @@ async function <span class="fstat-no" title="function not covered" >searchProvid
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-07-31T02:24:53.548Z
+                at 2025-08-10T18:44:45.702Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

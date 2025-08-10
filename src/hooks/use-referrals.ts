@@ -6,6 +6,50 @@ import { useToast } from './use-toast';
 import { handleApiCallWithRetry, handleSupabaseError } from '@/lib/api-error-handler';
 import { useNetworkStatus } from './use-network-status';
 
+/**
+ * Helper function to update patient status with graceful handling of missing current_referral_id column
+ */
+async function updatePatientStatus(
+  patientId: string, 
+  referralStatus: Patient['referral_status'], 
+  referralId?: string
+): Promise<void> {
+  const updateData = {
+    referral_status: referralStatus,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    // Try to include current_referral_id if provided and column exists
+    const updatePayload = referralId 
+      ? { ...updateData, current_referral_id: referralId }
+      : updateData;
+
+    const { error: updateError } = await supabase
+      .from('patients')
+      .update(updatePayload)
+      .eq('id', patientId);
+
+    if (updateError) {
+      // If current_referral_id column doesn't exist, try without it
+      if (updateError.message.includes('current_referral_id')) {
+        const { error: fallbackError } = await supabase
+          .from('patients')
+          .update(updateData)
+          .eq('id', patientId);
+        
+        if (fallbackError) {
+          console.error('Failed to update patient status:', fallbackError);
+        }
+      } else {
+        console.error('Failed to update patient status:', updateError);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to update patient status:', err);
+  }
+}
+
 export interface UseReferralsReturn {
   /** Current referral data */
   referral: Referral | null;
@@ -83,18 +127,21 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
             throw new Error('No data returned after creating referral');
           }
 
-          // Update the patient's referral status and current_referral_id
-          const { error: updateError } = await supabase
-            .from('patients')
-            .update({
-              referral_status: 'sent',
-              current_referral_id: data.id,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', patientId);
+          // Update the patient's referral status
+          await updatePatientStatus(patientId, 'sent', data.id);
 
-          if (updateError) {
-            console.error('Failed to update patient status:', updateError);
+          // Create initial history entry
+          const { error: historyError } = await supabase
+            .from('referral_history')
+            .insert({
+              referral_id: data.id,
+              status: 'pending',
+              notes: 'Referral created',
+              created_by: 'Care Coordinator',
+            });
+
+          if (historyError) {
+            console.error('Failed to create history entry:', historyError);
             // Continue anyway since the referral was created
           }
 
@@ -196,19 +243,7 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
 
         // Update the patient's referral status based on the referral status
         const patientStatus = mapReferralStatusToPatientStatus(status);
-        
-        const { error: patientUpdateError } = await supabase
-          .from('patients')
-          .update({
-            referral_status: patientStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', data.patient_id);
-
-        if (patientUpdateError) {
-          console.error('Failed to update patient status:', patientUpdateError);
-          // Continue anyway since the referral was updated
-        }
+        await updatePatientStatus(data.patient_id, patientStatus, referralId);
 
         // Add a manual history entry with the notes
         if (notes) {
@@ -286,17 +321,7 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
       }
 
       // Update the patient's referral status
-      const { error: patientUpdateError } = await supabase
-        .from('patients')
-        .update({
-          referral_status: 'scheduled',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.patient_id);
-
-      if (patientUpdateError) {
-        console.error('Failed to update patient status:', patientUpdateError);
-      }
+      await updatePatientStatus(data.patient_id, 'scheduled', referralId);
 
       // Add a manual history entry with the scheduled date
       const historyNote = notes || `Appointment scheduled for ${new Date(scheduledDate).toLocaleDateString()}`;
@@ -369,17 +394,7 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
       }
 
       // Update the patient's referral status
-      const { error: patientUpdateError } = await supabase
-        .from('patients')
-        .update({
-          referral_status: 'completed',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.patient_id);
-
-      if (patientUpdateError) {
-        console.error('Failed to update patient status:', patientUpdateError);
-      }
+      await updatePatientStatus(data.patient_id, 'completed', referralId);
 
       // Add a manual history entry
       const historyNote = notes || 'Care completed';
@@ -451,18 +466,7 @@ export function useReferrals(initialReferralId?: string): UseReferralsReturn {
       }
 
       // Update the patient's referral status back to needed
-      const { error: patientUpdateError } = await supabase
-        .from('patients')
-        .update({
-          referral_status: 'needed',
-          current_referral_id: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.patient_id);
-
-      if (patientUpdateError) {
-        console.error('Failed to update patient status:', patientUpdateError);
-      }
+      await updatePatientStatus(data.patient_id, 'needed');
 
       // Add a manual history entry
       const historyNote = notes || 'Referral cancelled';

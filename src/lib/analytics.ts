@@ -1,10 +1,19 @@
 import ReactGA from 'react-ga4';
 
 // Analytics configuration
+const getEnvVar = (key: string) => {
+  if (process.env.NODE_ENV === 'test') {
+    return process.env[key];
+  }
+  // Use globalThis to access import.meta safely
+  const importMeta = (globalThis as any).importMeta || {};
+  return importMeta.env?.[key];
+};
+
 const ANALYTICS_CONFIG = {
-  GA_MEASUREMENT_ID: import.meta.env.VITE_GA_MEASUREMENT_ID,
-  ENABLE_ANALYTICS: import.meta.env.VITE_ENABLE_ANALYTICS === 'true',
-  DEBUG_MODE: import.meta.env.VITE_ANALYTICS_DEBUG === 'true',
+  GA_MEASUREMENT_ID: process.env.NODE_ENV === 'test' ? 'test-id' : getEnvVar('VITE_GA_MEASUREMENT_ID'),
+  ENABLE_ANALYTICS: process.env.NODE_ENV === 'test' ? false : getEnvVar('VITE_ENABLE_ANALYTICS') === 'true',
+  DEBUG_MODE: process.env.NODE_ENV === 'test' ? false : getEnvVar('VITE_ANALYTICS_DEBUG') === 'true',
 };
 
 // Initialize Google Analytics
@@ -15,7 +24,7 @@ export const initializeAnalytics = () => {
   }
 
   ReactGA.initialize(ANALYTICS_CONFIG.GA_MEASUREMENT_ID, {
-    debug: ANALYTICS_CONFIG.DEBUG_MODE,
+    testMode: ANALYTICS_CONFIG.DEBUG_MODE,
     gtagOptions: {
       // Privacy-focused configuration for healthcare app
       anonymize_ip: true,

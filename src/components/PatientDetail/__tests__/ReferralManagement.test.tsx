@@ -15,29 +15,36 @@ Object.defineProperty(window, 'getComputedStyle', {
 });
 
 // Mock the toast hook
+const mockToast = jest.fn();
 jest.mock('@/hooks/use-toast', () => ({
   useToast: () => ({
-    toast: jest.fn(),
+    toast: mockToast,
   }),
 }));
 
 // Mock the notifications hook
+const mockNotifyStatusChange = jest.fn();
+const mockNotifyAppointmentScheduled = jest.fn();
+const mockNotifyReferralCompleted = jest.fn();
+const mockNotifyReferralCancelled = jest.fn();
+
 jest.mock('@/hooks/use-notifications', () => ({
   useNotifications: () => ({
-    notifyStatusChange: jest.fn(),
-    notifyAppointmentScheduled: jest.fn(),
-    notifyReferralCompleted: jest.fn(),
-    notifyReferralCancelled: jest.fn(),
+    notifyStatusChange: mockNotifyStatusChange,
+    notifyAppointmentScheduled: mockNotifyAppointmentScheduled,
+    notifyReferralCompleted: mockNotifyReferralCompleted,
+    notifyReferralCancelled: mockNotifyReferralCancelled,
   }),
 }));
 
 // Mock the optimistic updates hook
+const mockSelectProvider = jest.fn();
 jest.mock('@/hooks/use-optimistic-updates', () => ({
   useOptimisticUpdates: () => ({
     createReferral: jest.fn(),
     updateReferralStatus: jest.fn(),
     updatePatientInfo: jest.fn(),
-    selectProvider: jest.fn(),
+    selectProvider: mockSelectProvider,
     isCreatingReferral: false,
     isUpdatingReferral: false,
     isUpdatingPatient: false,
@@ -47,6 +54,19 @@ jest.mock('@/hooks/use-optimistic-updates', () => ({
     resetCreateReferral: jest.fn(),
     resetUpdateReferral: jest.fn(),
     resetUpdatePatient: jest.fn(),
+  }),
+}));
+
+// Mock the analytics hook
+const mockTrackReferralAction = jest.fn();
+const mockTrackFlow = jest.fn();
+jest.mock('@/hooks/use-analytics', () => ({
+  useInteractionTracking: () => ({
+    trackPatientAction: jest.fn(),
+    trackProviderAction: jest.fn(),
+    trackReferralAction: mockTrackReferralAction,
+    trackRisk: jest.fn(),
+    trackFlow: mockTrackFlow,
   }),
 }));
 
@@ -162,7 +182,7 @@ describe('ReferralManagement', () => {
       />
     );
     
-    expect(screen.getByText('Provider Selected')).toBeInTheDocument();
+    expect(screen.getByText('🎯 Perfect Match Found!')).toBeInTheDocument();
     expect(screen.getByText('Test Provider')).toBeInTheDocument();
     expect(screen.getAllByText('Physical Therapy')[0]).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /send referral/i })).toBeInTheDocument();
@@ -291,5 +311,338 @@ describe('ReferralManagement', () => {
     );
     
     expect(screen.getByText('Loading...')).toBeInTheDocument();
+  });
+
+  it('calls onSendReferral when send referral is confirmed', async () => {
+    const mockOnSendReferral = jest.fn().mockResolvedValue(undefined);
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={null}
+        onSendReferral={mockOnSendReferral}
+      />
+    );
+    
+    // Click send referral button
+    const sendButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(sendButton);
+    
+    // Confirm in dialog
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    
+    const confirmButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(confirmButton);
+    
+    await waitFor(() => {
+      expect(mockOnSendReferral).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('calls onScheduleReferral when schedule appointment is confirmed', async () => {
+    const mockOnScheduleReferral = jest.fn().mockResolvedValue(undefined);
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={mockActiveReferral}
+        onScheduleReferral={mockOnScheduleReferral}
+      />
+    );
+    
+    // Click schedule button
+    const scheduleButton = screen.getByRole('button', { name: /schedule appointment/i });
+    fireEvent.click(scheduleButton);
+    
+    // Confirm in dialog
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    
+    const confirmButton = screen.getByRole('button', { name: /schedule appointment/i });
+    fireEvent.click(confirmButton);
+    
+    await waitFor(() => {
+      expect(mockOnScheduleReferral).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('calls onCompleteReferral when complete referral is confirmed', async () => {
+    const mockOnCompleteReferral = jest.fn().mockResolvedValue(undefined);
+    const scheduledReferral = { ...mockActiveReferral, status: 'scheduled' as const };
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={scheduledReferral}
+        onCompleteReferral={mockOnCompleteReferral}
+      />
+    );
+    
+    // Click complete button
+    const completeButton = screen.getByRole('button', { name: /mark as completed/i });
+    fireEvent.click(completeButton);
+    
+    // Confirm in dialog
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    
+    const confirmButton = screen.getByRole('button', { name: /complete referral/i });
+    fireEvent.click(confirmButton);
+    
+    await waitFor(() => {
+      expect(mockOnCompleteReferral).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('calls onCancelReferral when cancel referral is confirmed', async () => {
+    const mockOnCancelReferral = jest.fn().mockResolvedValue(undefined);
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={mockActiveReferral}
+        onCancelReferral={mockOnCancelReferral}
+      />
+    );
+    
+    // Click cancel button
+    const cancelButton = screen.getByText(/cancel/i);
+    fireEvent.click(cancelButton);
+    
+    // Confirm in dialog
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    
+    const confirmButton = screen.getByRole('button', { name: /cancel referral/i });
+    fireEvent.click(confirmButton);
+    
+    await waitFor(() => {
+      expect(mockOnCancelReferral).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('shows toast notification on successful referral send', async () => {
+    const mockOnSendReferral = jest.fn().mockResolvedValue(undefined);
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={null}
+        onSendReferral={mockOnSendReferral}
+      />
+    );
+    
+    // Click send referral button
+    const sendButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(sendButton);
+    
+    // Confirm in dialog
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    
+    const confirmButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(confirmButton);
+    
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "Referral Sent Successfully",
+        description: expect.stringContaining("Referral has been sent to Test Provider"),
+      });
+    });
+  });
+
+  it('shows error toast on failed referral send', async () => {
+    const mockOnSendReferral = jest.fn().mockRejectedValue(new Error('Network error'));
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={null}
+        onSendReferral={mockOnSendReferral}
+      />
+    );
+    
+    // Click send referral button
+    const sendButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(sendButton);
+    
+    // Confirm in dialog
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    
+    const confirmButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(confirmButton);
+    
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "Failed to Send Referral",
+        description: "There was an error sending the referral. Please try again.",
+        variant: "destructive",
+      });
+    });
+  });
+
+  it('tracks analytics events on referral actions', async () => {
+    const mockOnSendReferral = jest.fn().mockResolvedValue(undefined);
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={null}
+        onSendReferral={mockOnSendReferral}
+      />
+    );
+    
+    // Click send referral button
+    const sendButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(sendButton);
+    
+    // Confirm in dialog
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    
+    const confirmButton = screen.getByRole('button', { name: /send referral/i });
+    fireEvent.click(confirmButton);
+    
+    await waitFor(() => {
+      expect(mockTrackReferralAction).toHaveBeenCalledWith('create');
+      expect(mockTrackFlow).toHaveBeenCalledWith('referral_sent', 'referral_management');
+    });
+  });
+
+  it('displays urgent status for patients with long discharge time', () => {
+    const urgentPatient = {
+      ...mockPatient,
+      discharge_date: '2024-01-01', // This will be many days ago
+    };
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        patient={urgentPatient}
+      />
+    );
+    
+    expect(screen.getByText('URGENT')).toBeInTheDocument();
+    expect(screen.getByText(/Critical window/)).toBeInTheDocument();
+  });
+
+  it('shows provider specialties and insurance network status', () => {
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={null}
+      />
+    );
+    
+    expect(screen.getByText('Specialties:')).toBeInTheDocument();
+    expect(screen.getByText('Sports Medicine')).toBeInTheDocument();
+    expect(screen.getByText('In-Network ✓')).toBeInTheDocument();
+  });
+
+  it('handles notes input in schedule dialog', async () => {
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={mockActiveReferral}
+      />
+    );
+    
+    // Click schedule button
+    const scheduleButton = screen.getByRole('button', { name: /schedule appointment/i });
+    fireEvent.click(scheduleButton);
+    
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    
+    // Add notes
+    const notesTextarea = screen.getByLabelText(/notes/i);
+    fireEvent.change(notesTextarea, { target: { value: 'Test notes' } });
+    
+    expect(notesTextarea).toHaveValue('Test notes');
+  });
+
+  it('shows different workflow steps based on referral status', () => {
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={mockActiveReferral}
+      />
+    );
+    
+    // Check workflow progress indicators
+    expect(screen.getByText('Select Provider')).toBeInTheDocument();
+    expect(screen.getByText('Send Referral')).toBeInTheDocument();
+    expect(screen.getAllByText('Schedule Appointment')).toHaveLength(2); // One in workflow, one as button
+    expect(screen.getByText('Complete Care')).toBeInTheDocument();
+  });
+
+  it('calls onRetryLoad when retry button is clicked in error state', () => {
+    const mockOnRetryLoad = jest.fn();
+    const error = new Error('Test error message');
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        error={error}
+        onRetryLoad={mockOnRetryLoad}
+      />
+    );
+    
+    const retryButton = screen.getByText('Try Again');
+    fireEvent.click(retryButton);
+    
+    expect(mockOnRetryLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows loading spinner when creating referral', () => {
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={null}
+        isCreatingReferral={true}
+      />
+    );
+    
+    expect(screen.getByText('Sending...')).toBeInTheDocument();
+  });
+
+  it('displays scheduled date when referral is scheduled', () => {
+    const scheduledReferral = {
+      ...mockActiveReferral,
+      status: 'scheduled' as const,
+      scheduledDate: '2024-12-25T14:00:00Z',
+    };
+    
+    render(
+      <ReferralManagement 
+        {...defaultProps} 
+        selectedProvider={mockProvider}
+        activeReferral={scheduledReferral}
+      />
+    );
+    
+    expect(screen.getByText('Scheduled Date:')).toBeInTheDocument();
+    expect(screen.getByText(/December/)).toBeInTheDocument();
   });
 });

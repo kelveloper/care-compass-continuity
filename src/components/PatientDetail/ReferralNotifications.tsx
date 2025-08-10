@@ -97,8 +97,8 @@ export const ReferralNotifications = ({
         });
         break;
 
-      case "pending":
-        // Add reminder if referral has been pending for more than 24 hours
+      case "sent":
+        // Add reminder if referral has been sent for more than 24 hours
         const createdTime = new Date(activeReferral.createdAt).getTime();
         const now = new Date().getTime();
         const hoursSincePending = (now - createdTime) / (1000 * 60 * 60);
@@ -107,7 +107,7 @@ export const ReferralNotifications = ({
           newNotifications.push({
             id: `${activeReferral.id}-pending-reminder`,
             type: "reminder",
-            title: "Referral Pending",
+            title: "Referral Awaiting Response",
             message: "This referral has been pending for over 24 hours. Consider following up with the provider.",
             timestamp: new Date().toISOString(),
             read: false,

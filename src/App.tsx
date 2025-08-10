@@ -9,11 +9,18 @@ import { ErrorDebugPanel } from "@/components/ErrorDebugPanel";
 import { OfflineStatusBadge } from "@/components/OfflineIndicator";
 import { AnalyticsProvider } from "@/components/AnalyticsProvider";
 import { errorLogger } from "@/lib/error-logger";
-import Index from "./pages/Index";
-import TestPage from "./pages/TestPage";
-import NotificationDemoPage from "./pages/NotificationDemoPage";
-import ErrorTestPage from "./pages/ErrorTestPage";
-import NotFound from "./pages/NotFound";
+import { performanceMonitor, startTiming, endTiming } from "@/lib/performance-monitor";
+import { lazy, Suspense, useEffect } from "react";
+import { GenericLoadingSpinner } from "@/components/LazyComponents";
+import { useIsMobile } from "@/hooks/use-mobile";
+
+// Lazy load pages for better performance
+const Index = lazy(() => import("./pages/Index"));
+const DemoPage = lazy(() => import("./pages/DemoPage"));
+const TestPage = lazy(() => import("./pages/TestPage"));
+const NotificationDemoPage = lazy(() => import("./pages/NotificationDemoPage"));
+const ErrorTestPage = lazy(() => import("./pages/ErrorTestPage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Enhanced QueryClient configuration for optimal caching and background updates
 const queryClient = new QueryClient({
@@ -99,6 +106,59 @@ const queryClient = new QueryClient({
 
 const App = () => {
   console.log('App: Component rendered');
+  const isMobile = useIsMobile();
+  
+  // Mobile-specific viewport handling
+  useEffect(() => {
+    if (isMobile) {
+      // Prevent zoom on input focus on iOS
+      const viewport = document.querySelector('meta[name="viewport"]');
+      if (viewport) {
+        viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+      }
+      
+      // Add mobile-specific CSS classes
+      document.body.classList.add('mobile-optimized');
+      
+      // Handle safe area insets for devices with notches
+      if (CSS.supports('padding-top: env(safe-area-inset-top)')) {
+        document.body.classList.add('has-safe-area');
+      }
+    } else {
+      // Reset viewport for desktop
+      const viewport = document.querySelector('meta[name="viewport"]');
+      if (viewport) {
+        viewport.setAttribute('content', 'width=device-width, initial-scale=1.0');
+      }
+      document.body.classList.remove('mobile-optimized', 'has-safe-area');
+    }
+  }, [isMobile]);
+  
+  // Start performance monitoring for app initialization
+  useEffect(() => {
+    startTiming('app-initialization');
+    
+    // End timing when app is fully loaded
+    const handleLoad = () => {
+      endTiming('app-initialization', { 
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        connection: (navigator as any).connection?.effectiveType || 'unknown'
+      });
+      
+      // Log performance summary after a short delay
+      setTimeout(() => {
+        performanceMonitor.logSummary();
+      }, 1000);
+    };
+    
+    if (document.readyState === 'complete') {
+      handleLoad();
+    } else {
+      window.addEventListener('load', handleLoad);
+      return () => window.removeEventListener('load', handleLoad);
+    }
+  }, []);
   
   return (
     <ErrorBoundary
@@ -118,58 +178,78 @@ const App = () => {
       }}
     >
       <QueryClientProvider client={queryClient}>
-        <AnalyticsProvider>
-          <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <ErrorBoundary isolate>
-            <BrowserRouter>
+        <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <ErrorBoundary isolate>
+          <BrowserRouter>
+            <AnalyticsProvider>
               <Routes>
                 <Route path="/" element={
                   <ErrorBoundary isolate>
-                    <Index />
+                    <Suspense fallback={<GenericLoadingSpinner />}>
+                      <Index />
+                    </Suspense>
+                  </ErrorBoundary>
+                } />
+                <Route path="/demo" element={
+                  <ErrorBoundary isolate>
+                    <Suspense fallback={<GenericLoadingSpinner />}>
+                      <DemoPage />
+                    </Suspense>
                   </ErrorBoundary>
                 } />
                 <Route path="/test" element={
                   <ErrorBoundary isolate>
-                    <TestPage />
+                    <Suspense fallback={<GenericLoadingSpinner />}>
+                      <TestPage />
+                    </Suspense>
                   </ErrorBoundary>
                 } />
                 <Route path="/notifications-demo" element={
                   <ErrorBoundary isolate>
-                    <NotificationDemoPage />
+                    <Suspense fallback={<GenericLoadingSpinner />}>
+                      <NotificationDemoPage />
+                    </Suspense>
                   </ErrorBoundary>
                 } />
                 <Route path="/error-test" element={
                   <ErrorBoundary isolate>
-                    <ErrorTestPage />
+                    <Suspense fallback={<GenericLoadingSpinner />}>
+                      <ErrorTestPage />
+                    </Suspense>
                   </ErrorBoundary>
                 } />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={
                   <ErrorBoundary isolate>
-                    <NotFound />
+                    <Suspense fallback={<GenericLoadingSpinner />}>
+                      <NotFound />
+                    </Suspense>
                   </ErrorBoundary>
                 } />
               </Routes>
-            </BrowserRouter>
-          </ErrorBoundary>
-          {/* React Query DevTools - only shows in development */}
-          <ReactQueryDevtools 
-            initialIsOpen={false} 
-            position="bottom-right"
-            buttonPosition="bottom-right"
-          />
-          
-          {/* Error Debug Panel - only shows in development */}
-          <ErrorDebugPanel />
-          
-          {/* Global Offline Status Badge */}
-          <div className="fixed top-4 right-4 z-50">
-            <OfflineStatusBadge />
-          </div>
-          </TooltipProvider>
-        </AnalyticsProvider>
+              
+              {/* React Query DevTools - only shows in development */}
+              {process.env.NODE_ENV === 'development' && (
+                <ReactQueryDevtools 
+                  initialIsOpen={false} 
+                  position="bottom-right"
+                  buttonPosition="bottom-right"
+                />
+              )}
+              
+              {/* Error Debug Panel - only shows in development */}
+              {process.env.NODE_ENV === 'development' && <ErrorDebugPanel />}
+              
+              {/* Global Offline Status Badge */}
+              <div className="fixed top-4 right-4 z-50">
+                <OfflineStatusBadge />
+              </div>
+            </AnalyticsProvider>
+          </BrowserRouter>
+        </ErrorBoundary>
+        </TooltipProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );
